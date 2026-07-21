@@ -67,6 +67,9 @@ Remove it with:
 codex-presence autostart:remove
 ```
 
+`Ctrl+C` stops only the foreground instance in the current terminal. The removal command also
+gracefully stops an active background instance so Discord activity is cleared before exit.
+
 The service writes its own warnings and errors to a rotating, size-bounded per-user log. Background
 stdout and stderr are disabled on macOS and Linux to avoid duplicate, unbounded system logs.
 

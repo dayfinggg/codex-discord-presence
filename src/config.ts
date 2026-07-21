@@ -23,6 +23,11 @@ export interface Config {
 
 export const DEFAULT_DISCORD_APPLICATION_ID = "1521142415547826177";
 export const DEFAULT_RICH_PRESENCE_ASSET_KEY = "codex-color";
+export const DEFAULT_LARGE_IMAGE_KEY_LIGHT = "codex-liquid-light";
+export const DEFAULT_LARGE_IMAGE_KEY_DARK = "codex-liquid-dark";
+export const DEFAULT_SMALL_IMAGE_KEY = "usage-stats";
+export const DEFAULT_SMALL_IMAGE_KEY_LIGHT = "codex-stats-light";
+export const DEFAULT_SMALL_IMAGE_KEY_DARK = "codex-stats-dark";
 const SSH_ALIAS = /^[a-z0-9](?:[a-z0-9._-]{0,252}[a-z0-9])?$/i;
 
 export interface RuntimePaths {
@@ -117,15 +122,29 @@ export function loadConfig(
   const codexHome = resolveCodexHome(env, runtime);
   const dataDir = resolvePresenceDataDir(env, runtime);
   const appName = env.CODEX_APP_NAME?.trim();
+  const hasLargeImageFallbackOverride = env.CODEX_LARGE_IMAGE_KEY !== undefined;
   const largeImageKey = optionalAsset(
     env.CODEX_LARGE_IMAGE_KEY ?? DEFAULT_RICH_PRESENCE_ASSET_KEY,
   );
   const largeImageUrl = optionalAsset(env.CODEX_LARGE_IMAGE_URL);
-  const largeImageKeyLight = optionalAsset(env.CODEX_LARGE_IMAGE_KEY_LIGHT);
-  const largeImageKeyDark = optionalAsset(env.CODEX_LARGE_IMAGE_KEY_DARK);
-  const smallImageKey = optionalAsset(env.CODEX_SMALL_IMAGE_KEY);
-  const smallImageKeyLight = optionalAsset(env.CODEX_SMALL_IMAGE_KEY_LIGHT);
-  const smallImageKeyDark = optionalAsset(env.CODEX_SMALL_IMAGE_KEY_DARK);
+  const largeImageKeyLight = optionalAsset(
+    env.CODEX_LARGE_IMAGE_KEY_LIGHT ??
+      (hasLargeImageFallbackOverride ? undefined : DEFAULT_LARGE_IMAGE_KEY_LIGHT),
+  );
+  const largeImageKeyDark = optionalAsset(
+    env.CODEX_LARGE_IMAGE_KEY_DARK ??
+      (hasLargeImageFallbackOverride ? undefined : DEFAULT_LARGE_IMAGE_KEY_DARK),
+  );
+  const hasSmallImageFallbackOverride = env.CODEX_SMALL_IMAGE_KEY !== undefined;
+  const smallImageKey = optionalAsset(env.CODEX_SMALL_IMAGE_KEY ?? DEFAULT_SMALL_IMAGE_KEY);
+  const smallImageKeyLight = optionalAsset(
+    env.CODEX_SMALL_IMAGE_KEY_LIGHT ??
+      (hasSmallImageFallbackOverride ? undefined : DEFAULT_SMALL_IMAGE_KEY_LIGHT),
+  );
+  const smallImageKeyDark = optionalAsset(
+    env.CODEX_SMALL_IMAGE_KEY_DARK ??
+      (hasSmallImageFallbackOverride ? undefined : DEFAULT_SMALL_IMAGE_KEY_DARK),
+  );
   const smallImageUrl = optionalAsset(env.CODEX_SMALL_IMAGE_URL);
   const planNameOverride = env.CODEX_PLAN_NAME?.trim();
   const configuredLogFile = env.RPC_LOG_FILE?.trim();
