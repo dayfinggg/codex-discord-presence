@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, join, normalize, resolve } from "node:path";
+import { posix, win32 } from "node:path";
 
 export interface Config {
   applicationId: string;
@@ -45,43 +45,50 @@ function optionalAsset(value: string | undefined): string | undefined {
   return trimmed;
 }
 
+function pathApi(runtime: RuntimePaths): typeof posix {
+  return runtime.platform === "win32" ? win32 : posix;
+}
+
 export function resolveUserPath(value: string, runtime: RuntimePaths): string {
+  const paths = pathApi(runtime);
   const trimmed = value.trim();
-  if (trimmed === "~") return normalize(runtime.userHome);
+  if (trimmed === "~") return paths.normalize(runtime.userHome);
   if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
-    return resolve(runtime.userHome, trimmed.slice(2));
+    return paths.resolve(runtime.userHome, trimmed.slice(2));
   }
-  return isAbsolute(trimmed) ? normalize(trimmed) : resolve(runtime.cwd, trimmed);
+  return paths.isAbsolute(trimmed) ? paths.normalize(trimmed) : paths.resolve(runtime.cwd, trimmed);
 }
 
 export function resolveCodexHome(
   env: Record<string, string | undefined>,
   runtime: RuntimePaths,
 ): string {
+  const paths = pathApi(runtime);
   const configured = env.CODEX_HOME?.trim();
-  return configured ? resolveUserPath(configured, runtime) : join(runtime.userHome, ".codex");
+  return configured ? resolveUserPath(configured, runtime) : paths.join(runtime.userHome, ".codex");
 }
 
 export function resolvePresenceDataDir(
   env: Record<string, string | undefined>,
   runtime: RuntimePaths,
 ): string {
+  const paths = pathApi(runtime);
   const configured = env.CODEX_PRESENCE_DATA_DIR?.trim();
   if (configured) return resolveUserPath(configured, runtime);
 
   if (runtime.platform === "win32") {
     const base = env.LOCALAPPDATA?.trim() || env.APPDATA?.trim();
     return base
-      ? join(resolveUserPath(base, runtime), "Codex Discord Presence")
-      : join(runtime.userHome, "AppData", "Local", "Codex Discord Presence");
+      ? paths.join(resolveUserPath(base, runtime), "Codex Discord Presence")
+      : paths.join(runtime.userHome, "AppData", "Local", "Codex Discord Presence");
   }
   if (runtime.platform === "darwin") {
-    return join(runtime.userHome, "Library", "Application Support", "Codex Discord Presence");
+    return paths.join(runtime.userHome, "Library", "Application Support", "Codex Discord Presence");
   }
   const stateHome = env.XDG_STATE_HOME?.trim();
   return stateHome
-    ? join(resolveUserPath(stateHome, runtime), "codex-discord-presence")
-    : join(runtime.userHome, ".local", "state", "codex-discord-presence");
+    ? paths.join(resolveUserPath(stateHome, runtime), "codex-discord-presence")
+    : paths.join(runtime.userHome, ".local", "state", "codex-discord-presence");
 }
 
 export function resolveRemoteHosts(value: string | undefined): {
@@ -104,6 +111,7 @@ export function loadConfig(
   env: Record<string, string | undefined> = process.env,
   runtime: RuntimePaths = currentRuntimePaths(),
 ): Config {
+  const paths = pathApi(runtime);
   const applicationId = env.CODEX_DISCORD_APPLICATION_ID?.trim() || DEFAULT_DISCORD_APPLICATION_ID;
 
   const codexHome = resolveCodexHome(env, runtime);
@@ -138,8 +146,8 @@ export function loadConfig(
     dataDir,
     logFile: configuredLogFile
       ? resolveUserPath(configuredLogFile, runtime)
-      : join(dataDir, "codex-discord-presence.log"),
-    serviceTierCacheFile: join(dataDir, "service-tiers.json"),
+      : paths.join(dataDir, "codex-discord-presence.log"),
+    serviceTierCacheFile: paths.join(dataDir, "service-tiers.json"),
     remoteHosts: remote.hosts,
     remoteDiscovery: remote.discovery,
     planNameOverride: planNameOverride || undefined,

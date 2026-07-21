@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { join, resolve } from "node:path";
+import { posix, win32 } from "node:path";
 import {
   DEFAULT_DISCORD_APPLICATION_ID,
   DEFAULT_RICH_PRESENCE_ASSET_KEY,
@@ -11,33 +11,37 @@ import {
 } from "../src/config.ts";
 
 const runtime: RuntimePaths = {
-  userHome: join("C:", "Users", "example"),
-  cwd: join("C:", "apps", "codex-presence"),
+  userHome: win32.join("C:\\", "Users", "example"),
+  cwd: win32.join("C:\\", "apps", "codex-presence"),
   platform: "win32",
 };
 
 test("Codex home is derived from the current user's home", () => {
-  expect(resolveCodexHome({}, runtime)).toBe(join(runtime.userHome, ".codex"));
+  expect(resolveCodexHome({}, runtime)).toBe(win32.join(runtime.userHome, ".codex"));
 });
 
 test("configured paths support home expansion and relative paths", () => {
   expect(resolveCodexHome({ CODEX_HOME: "~/.custom-codex" }, runtime)).toBe(
-    resolve(runtime.userHome, ".custom-codex"),
+    win32.resolve(runtime.userHome, ".custom-codex"),
   );
   expect(resolvePresenceDataDir({ CODEX_PRESENCE_DATA_DIR: "state" }, runtime)).toBe(
-    resolve(runtime.cwd, "state"),
+    win32.resolve(runtime.cwd, "state"),
   );
 });
 
 test("presence data uses the operating system data location", () => {
-  const localAppData = join(runtime.userHome, "AppData", "Local");
+  const localAppData = win32.join(runtime.userHome, "AppData", "Local");
   expect(resolvePresenceDataDir({ LOCALAPPDATA: localAppData }, runtime)).toBe(
-    join(localAppData, "Codex Discord Presence"),
+    win32.join(localAppData, "Codex Discord Presence"),
   );
 
-  const linux = { ...runtime, platform: "linux" as const };
+  const linux: RuntimePaths = {
+    userHome: "/home/example",
+    cwd: "/opt/codex-presence",
+    platform: "linux",
+  };
   expect(resolvePresenceDataDir({ XDG_STATE_HOME: "state" }, linux)).toBe(
-    join(resolve(runtime.cwd, "state"), "codex-discord-presence"),
+    posix.join(posix.resolve(linux.cwd, "state"), "codex-discord-presence"),
   );
 });
 
@@ -45,15 +49,15 @@ test("loadConfig keeps every generated data file under the resolved data directo
   const config = loadConfig(
     {
       CODEX_DISCORD_APPLICATION_ID: "app-id",
-      LOCALAPPDATA: join(runtime.userHome, "AppData", "Local"),
+      LOCALAPPDATA: win32.join(runtime.userHome, "AppData", "Local"),
     },
     runtime,
   );
-  expect(config.codexHome).toBe(join(runtime.userHome, ".codex"));
+  expect(config.codexHome).toBe(win32.join(runtime.userHome, ".codex"));
   expect(config.largeImageKey).toBe(DEFAULT_RICH_PRESENCE_ASSET_KEY);
   expect(config.largeImageUrl).toBeUndefined();
-  expect(config.logFile).toBe(join(config.dataDir, "codex-discord-presence.log"));
-  expect(config.serviceTierCacheFile).toBe(join(config.dataDir, "service-tiers.json"));
+  expect(config.logFile).toBe(win32.join(config.dataDir, "codex-discord-presence.log"));
+  expect(config.serviceTierCacheFile).toBe(win32.join(config.dataDir, "service-tiers.json"));
 });
 
 test("shared art is the default and can be overridden or disabled", () => {
