@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { loadConfig } from "./config.ts";
 import { CodexStore } from "./codex/codex-store.ts";
 import { CodexDesktopSelectionWatcher } from "./codex/desktop-selection.ts";
@@ -226,6 +226,8 @@ if (config.planNameOverride) store.setPlanOverride(config.planNameOverride);
 void refreshPlan();
 void startWatcher().catch((err) => log.error(`watcher startup failed: ${(err as Error).message}`));
 const planTimer = setInterval(() => void refreshPlan(), 30 * 60 * 1000);
+const stopFile = process.env.PRESENCE_STOP_FILE?.trim();
+let stopFileTimer: ReturnType<typeof setInterval> | undefined;
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
@@ -233,6 +235,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   log.info(`shutting down (${signal})`);
   clearInterval(planTimer);
+  if (stopFileTimer) clearInterval(stopFileTimer);
   themeWatcher.stop();
   processScan?.stop();
   liveness?.stop();
@@ -251,5 +254,10 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
+if (stopFile) {
+  stopFileTimer = setInterval(() => {
+    if (existsSync(stopFile)) void shutdown("autostart removal");
+  }, 500);
+}
 
 log.info("Codex → Discord Rich Presence started");

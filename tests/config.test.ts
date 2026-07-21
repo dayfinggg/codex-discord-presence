@@ -2,7 +2,12 @@ import { expect, test } from "vitest";
 import { posix, win32 } from "node:path";
 import {
   DEFAULT_DISCORD_APPLICATION_ID,
+  DEFAULT_LARGE_IMAGE_KEY_DARK,
+  DEFAULT_LARGE_IMAGE_KEY_LIGHT,
   DEFAULT_RICH_PRESENCE_ASSET_KEY,
+  DEFAULT_SMALL_IMAGE_KEY,
+  DEFAULT_SMALL_IMAGE_KEY_DARK,
+  DEFAULT_SMALL_IMAGE_KEY_LIGHT,
   loadConfig,
   resolveCodexHome,
   resolvePresenceDataDir,
@@ -60,12 +65,32 @@ test("loadConfig keeps every generated data file under the resolved data directo
   expect(config.serviceTierCacheFile).toBe(win32.join(config.dataDir, "service-tiers.json"));
 });
 
-test("shared art is the default and can be overridden or disabled", () => {
-  expect(loadConfig({}, runtime).largeImageKey).toBe(DEFAULT_RICH_PRESENCE_ASSET_KEY);
-  expect(loadConfig({ CODEX_LARGE_IMAGE_KEY: "custom-codex-art" }, runtime).largeImageKey).toBe(
-    "custom-codex-art",
+test("zero-config mode includes themed art and the statistics icon", () => {
+  const config = loadConfig({}, runtime);
+  expect(config.largeImageKey).toBe(DEFAULT_RICH_PRESENCE_ASSET_KEY);
+  expect(config.largeImageKeyLight).toBe(DEFAULT_LARGE_IMAGE_KEY_LIGHT);
+  expect(config.largeImageKeyDark).toBe(DEFAULT_LARGE_IMAGE_KEY_DARK);
+  expect(config.smallImageKey).toBe(DEFAULT_SMALL_IMAGE_KEY);
+  expect(config.smallImageKeyLight).toBe(DEFAULT_SMALL_IMAGE_KEY_LIGHT);
+  expect(config.smallImageKeyDark).toBe(DEFAULT_SMALL_IMAGE_KEY_DARK);
+});
+
+test("fallback art can be overridden or disabled without hidden themed defaults", () => {
+  const custom = loadConfig({ CODEX_LARGE_IMAGE_KEY: "custom-codex-art" }, runtime);
+  expect(custom.largeImageKey).toBe("custom-codex-art");
+  expect(custom.largeImageKeyLight).toBeUndefined();
+  expect(custom.largeImageKeyDark).toBeUndefined();
+
+  const disabled = loadConfig(
+    { CODEX_LARGE_IMAGE_KEY: "off", CODEX_SMALL_IMAGE_KEY: "off" },
+    runtime,
   );
-  expect(loadConfig({ CODEX_LARGE_IMAGE_KEY: "off" }, runtime).largeImageKey).toBeUndefined();
+  expect(disabled.largeImageKey).toBeUndefined();
+  expect(disabled.largeImageKeyLight).toBeUndefined();
+  expect(disabled.largeImageKeyDark).toBeUndefined();
+  expect(disabled.smallImageKey).toBeUndefined();
+  expect(disabled.smallImageKeyLight).toBeUndefined();
+  expect(disabled.smallImageKeyDark).toBeUndefined();
 });
 
 test("the shared Discord application id is the portable default", () => {
