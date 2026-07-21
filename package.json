@@ -1,0 +1,69 @@
+{
+  "name": "codex-discord-presence",
+  "version": "15.0.0",
+  "description": "Cross-platform Discord Rich Presence for OpenAI Codex Desktop and Codex CLI with live models, plan limits, token usage, goals, Fast mode, and secure SSH remotes.",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "codex-presence": "dist/cli.js",
+    "codex-discord-presence": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "scripts/",
+    "assets/",
+    "pricing.json",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "codex",
+    "openai-codex",
+    "codex-cli",
+    "codex-desktop",
+    "discord-rich-presence",
+    "discord-rpc",
+    "developer-tools",
+    "cross-platform"
+  ],
+  "author": "dayfinggg",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dayfinggg/codex-discord-presence.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dayfinggg/codex-discord-presence/issues"
+  },
+  "homepage": "https://github.com/dayfinggg/codex-discord-presence#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.18.0",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "prestart": "npm run build",
+    "start": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env --enable-source-maps dist/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env --import=tsx --watch src/index.ts",
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning ./node_modules/vitest/vitest.mjs run",
+    "autostart": "npm run build && node scripts/install-autostart.mjs",
+    "autostart:remove": "node scripts/remove-autostart.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test && npm run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@xhayper/discord-rpc": "^1.3.4",
+    "smol-toml": "^1.7.0"
+  }
+}
