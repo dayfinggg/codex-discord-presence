@@ -526,9 +526,9 @@ export class CodexStore {
       const rank = statusRank(stale ? "idle" : session.status);
       const at = Math.max(session.lastInteractionAt, session.lastActivity);
       if (
-        selectionRank > bestSelectionRank ||
-        (selectionRank === bestSelectionRank && rank > bestRank) ||
-        (selectionRank === bestSelectionRank && rank === bestRank && at > bestAt)
+        rank > bestRank ||
+        (rank === bestRank && selectionRank > bestSelectionRank) ||
+        (rank === bestRank && selectionRank === bestSelectionRank && at > bestAt)
       ) {
         bestSelectionRank = selectionRank;
         bestRank = rank;
