@@ -313,6 +313,20 @@ test("a local active session wins over a newer remote active session", () => {
   expect(snap!.action).toBe("Running a command");
 });
 
+test("a remote active session wins over an idle local session", () => {
+  const store = new CodexStore(() => {});
+  const now = Date.now();
+  store.handleEvent(PARENT, false, { kind: "session_meta", isSubagent: false }, now - 5000);
+  store.handleEvent(PARENT, false, { kind: "turn_ended" }, now - 4000);
+  store.handleEvent(CHILD, true, { kind: "session_meta", isSubagent: false }, now - 2000);
+  store.handleEvent(CHILD, true, { kind: "tool", name: "shell_command" }, now - 1000);
+  store.setDesktopSelection({ remote: false });
+
+  const snap = store.snapshot();
+  expect(snap!.remote).toBe(true);
+  expect(snap!.action).toBe("Running a command");
+});
+
 test("desktop selection switches presence between local and remote sessions", () => {
   const store = new CodexStore(() => {});
   const now = Date.now();
