@@ -27,6 +27,17 @@ test("session_meta for a subagent carries parent thread id", () => {
   });
 });
 
+test("a Codex-created task without a parent remains a visible session", () => {
+  const line =
+    '{"type":"session_meta","payload":{"id":"019fa856","cwd":"/srv/app","source":"vscode","thread_source":"subagent"}}';
+  expect(parseRolloutLine(line)).toMatchObject({
+    kind: "session_meta",
+    source: "vscode",
+    isSubagent: false,
+    parentThreadId: undefined,
+  });
+});
+
 test("turn_context extracts model, effort, plan mode and service tier", () => {
   const line =
     '{"type":"turn_context","payload":{"model":"gpt-5.5","effort":"xhigh","service_tier":"priority","collaboration_mode":{"mode":"plan"}}}';

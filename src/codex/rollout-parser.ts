@@ -392,11 +392,10 @@ function parseEventMsg(payload: Record<string, unknown>): CodexEvent | undefined
 }
 
 function parseSessionMeta(payload: Record<string, unknown>): CodexEvent {
-  const threadSource = str(payload.thread_source);
   const source = payload.source;
   let sourceLabel: string | undefined;
   let parentThreadId: string | undefined;
-  let isSubagent = threadSource === "subagent";
+  let isSubagent = false;
 
   if (typeof source === "string") {
     sourceLabel = source;
