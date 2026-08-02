@@ -9,6 +9,14 @@ const log = createLogger("codex-selection");
 const POLL_MS = 1_000;
 export const LOCAL_SESSION_BY_TITLE_QUERY =
   "SELECT id FROM threads WHERE archived = 0 AND title <> '' AND (title = ? OR title LIKE ? OR ? LIKE title || '%') ORDER BY length(title) DESC, recency_at_ms DESC, updated_at_ms DESC LIMIT 1";
+const RECENT_LOCAL_SESSIONS_QUERY =
+  "SELECT id, title, cwd FROM threads WHERE archived = 0 AND title <> '' ORDER BY recency_at_ms DESC, updated_at_ms DESC LIMIT 500";
+
+export interface LocalSessionTitleCandidate {
+  id: string;
+  title: string;
+  cwd: string;
+}
 
 export interface CodexDesktopSelection {
   remote: boolean;
@@ -117,6 +125,47 @@ export function parseCodexUiSelection(line: string): CodexUiSelection | undefine
     }
   } catch {}
   return undefined;
+}
+
+function normalizedPath(value: string): string {
+  return value.trim().replace(/^\\\\\?\\/, "").replaceAll("/", "\\").replace(/\\+$/, "").toLocaleLowerCase();
+}
+
+function titleTokens(value: string): string[] {
+  return [...new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])]
+    .filter((token) => token.length >= 3);
+}
+
+function tokenMatches(left: string, right: string): boolean {
+  if (left === right) return true;
+  const prefixLength = Math.min(5, left.length, right.length);
+  return prefixLength >= 4 && left.slice(0, prefixLength) === right.slice(0, prefixLength);
+}
+
+export function selectLocalSessionByTitle(
+  title: string,
+  candidates: LocalSessionTitleCandidate[],
+  projectRoots: string[] = [],
+): string | undefined {
+  const selectedTokens = titleTokens(title);
+  if (selectedTokens.length === 0) return undefined;
+  const roots = projectRoots.map(normalizedPath).filter(Boolean);
+  let best: { id: string; score: number } | undefined;
+  for (const candidate of candidates) {
+    if (roots.length > 0) {
+      const cwd = normalizedPath(candidate.cwd);
+      if (!roots.some((root) => cwd === root || cwd.startsWith(`${root}\\`))) continue;
+    }
+    const candidateTokens = titleTokens(candidate.title);
+    const matched = selectedTokens.filter((selected) =>
+      candidateTokens.some((candidateToken) => tokenMatches(selected, candidateToken))
+    ).length;
+    if (matched < Math.min(2, selectedTokens.length)) continue;
+    const score = matched / selectedTokens.length;
+    if (score < 0.6 || (best && score <= best.score)) continue;
+    best = { id: candidate.id, score };
+  }
+  return best?.id.toLowerCase();
 }
 
 function hasOwn(state: Record<string, unknown>, key: string): boolean {
@@ -242,18 +291,33 @@ export class CodexDesktopSelectionWatcher {
     }
     const base = parseCodexDesktopSelection(raw);
     if (base?.remote) return { ...base, threadTitle: ui.title };
-    const sessionId = this.localSessionId(ui.title);
-    return sessionId ? { remote: false, sessionId } : (base ?? { remote: false });
+    const sessionId = this.localSessionId(ui.title, this.localProjectRoots(raw));
+    return sessionId ? { remote: false, sessionId } : { remote: false, threadTitle: ui.title };
   }
 
-  private localSessionId(title: string): string | undefined {
+  private localProjectRoots(raw: string): string[] {
+    try {
+      const state = JSON.parse(raw) as Record<string, unknown>;
+      const selected = state["selected-project"] as Record<string, unknown> | undefined;
+      if (selected?.type !== "local" || typeof selected.projectId !== "string") return [];
+      const projects = state["local-projects"] as Record<string, unknown> | undefined;
+      const project = projects?.[selected.projectId] as Record<string, unknown> | undefined;
+      return Array.isArray(project?.rootPaths)
+        ? project.rootPaths.filter((root): root is string => typeof root === "string" && root.trim() !== "")
+        : [];
+    } catch { return []; }
+  }
+
+  private localSessionId(title: string, projectRoots: string[]): string | undefined {
     try {
       const database = new DatabaseSync(this.stateDatabaseFile, { readOnly: true });
       try {
         const row = database.prepare(
           LOCAL_SESSION_BY_TITLE_QUERY,
         ).get(title, `${title}%`, title) as { id?: unknown } | undefined;
-        return typeof row?.id === "string" ? row.id.toLowerCase() : undefined;
+        if (typeof row?.id === "string") return row.id.toLowerCase();
+        const candidates = database.prepare(RECENT_LOCAL_SESSIONS_QUERY).all() as unknown as LocalSessionTitleCandidate[];
+        return selectLocalSessionByTitle(title, candidates, projectRoots);
       } finally {
         database.close();
       }

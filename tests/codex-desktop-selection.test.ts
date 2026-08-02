@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import { LOCAL_SESSION_BY_TITLE_QUERY, parseCodexDesktopSelection, parseCodexUiSelection } from "../src/codex/desktop-selection.ts";
+import { LOCAL_SESSION_BY_TITLE_QUERY, parseCodexDesktopSelection, parseCodexUiSelection, selectLocalSessionByTitle } from "../src/codex/desktop-selection.ts";
 
 test("local title lookup never selects an untitled background session", () => {
   const database = new DatabaseSync(":memory:");
@@ -10,6 +10,19 @@ test("local title lookup never selects an untitled background session", () => {
     .get("Selected chat activity", "Selected chat activity%", "Selected chat activity") as { id?: unknown } | undefined;
   expect(row?.id).toBe("selected");
   database.close();
+});
+
+test("generated Desktop title resolves the matching session in the selected project", () => {
+  expect(selectLocalSessionByTitle("Исправить запуск сервиса активности", [
+    { id: "selected", title: "Сервис активности не запустился после перезагрузки ПК, проверить почему и исправить.", cwd: "\\\\?\\D:\\work" },
+    { id: "background", title: "Исправить запуск сервиса в фоне", cwd: "\\\\?\\D:\\other" },
+  ], ["D:\\work"])).toBe("selected");
+});
+
+test("generated Desktop title does not guess from a weak match", () => {
+  expect(selectLocalSessionByTitle("Проверить активность", [
+    { id: "background", title: "Проверить сборку приложения", cwd: "D:\\work" },
+  ], ["D:\\work"])).toBeUndefined();
 });
 
 test("UI selection protocol accepts desktop and CLI selections", () => {
