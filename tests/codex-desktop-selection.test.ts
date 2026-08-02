@@ -1,5 +1,16 @@
 import { test, expect } from "vitest";
-import { parseCodexDesktopSelection, parseCodexUiSelection } from "../src/codex/desktop-selection.ts";
+import { DatabaseSync } from "node:sqlite";
+import { LOCAL_SESSION_BY_TITLE_QUERY, parseCodexDesktopSelection, parseCodexUiSelection } from "../src/codex/desktop-selection.ts";
+
+test("local title lookup never selects an untitled background session", () => {
+  const database = new DatabaseSync(":memory:");
+  database.exec("CREATE TABLE threads (id TEXT, title TEXT, archived INTEGER, recency_at_ms INTEGER, updated_at_ms INTEGER)");
+  database.exec("INSERT INTO threads VALUES ('untitled', '', 0, 2, 2), ('selected', 'Selected chat', 0, 1, 1)");
+  const row = database.prepare(LOCAL_SESSION_BY_TITLE_QUERY)
+    .get("Selected chat activity", "Selected chat activity%", "Selected chat activity") as { id?: unknown } | undefined;
+  expect(row?.id).toBe("selected");
+  database.close();
+});
 
 test("UI selection protocol accepts desktop and CLI selections", () => {
   expect(parseCodexUiSelection('{"kind":"desktop","title":"Selected chat"}')).toEqual({
