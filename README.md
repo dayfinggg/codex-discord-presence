@@ -55,6 +55,9 @@ On Windows the scanner distinguishes the real Codex Desktop window and Codex CLI
 `app-server` processes. On macOS and Linux it handles native `ps` elapsed-time formats and detects
 both `codex` and the Codex Desktop executable.
 
+On Windows, presence follows the task selected in Codex Desktop or the Codex CLI session in the
+foreground. Background tasks, goals, and remote sessions cannot replace the selected task.
+
 ## Autostart
 
 ```bash

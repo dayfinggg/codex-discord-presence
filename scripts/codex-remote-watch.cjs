@@ -29,6 +29,9 @@ const sessionServiceTiers = new Map();
 let goalDatabase;
 let goalStatement;
 let lastGoalStateKey;
+let threadDatabase;
+let threadStatement;
+const lastThreadMetadata = new Map();
 const lastMonthlyState = new Map();
 
 process.stdout.on("error", () => process.exit(0));
@@ -46,6 +49,42 @@ function emitServiceTier(sessionId, serviceTier) {
     process.stdout.write(JSON.stringify({ s: sessionId, t: serviceTier }) + "\n");
   } catch (e) {
     process.exit(0);
+  }
+}
+
+function emitThreadMetadata(sessionId, title) {
+  try {
+    process.stdout.write(JSON.stringify({ s: sessionId, n: title }) + "\n");
+  } catch (e) {
+    process.exit(0);
+  }
+}
+
+function scanThreadMetadata() {
+  if (!DatabaseSync) return;
+  try {
+    if (!threadDatabase) {
+      threadDatabase = new DatabaseSync(path.join(HOME, "state_5.sqlite"), { readOnly: true });
+      threadStatement = threadDatabase.prepare("SELECT title FROM threads WHERE id = ? LIMIT 1");
+    }
+    const sessionIds = new Set();
+    for (const file of tracked.keys()) {
+      const sessionId = sessionIdFromFile(file);
+      if (sessionId) sessionIds.add(sessionId);
+    }
+    for (const sessionId of sessionIds) {
+      const row = threadStatement.get(sessionId);
+      const title = typeof row?.title === "string" ? row.title.trim() : "";
+      if (!title || lastThreadMetadata.get(sessionId) === title) continue;
+      lastThreadMetadata.set(sessionId, title);
+      emitThreadMetadata(sessionId, title);
+    }
+  } catch (e) {
+    try {
+      threadDatabase?.close();
+    } catch (closeError) {}
+    threadDatabase = undefined;
+    threadStatement = undefined;
   }
 }
 
@@ -585,13 +624,14 @@ function listRecent() {
       } else if (entry.name.endsWith(".jsonl")) {
         try {
           const info = fs.statSync(full);
-          if (info.mtimeMs >= cutoff) out.push(full);
+          if (info.mtimeMs >= cutoff) out.push({ file: full, mtimeMs: info.mtimeMs });
         } catch (e) {}
       }
     }
   };
   walk(SESSIONS);
-  return out;
+  out.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return out.map((entry) => entry.file);
 }
 
 function readRange(file, start, length) {
@@ -652,7 +692,10 @@ function prime(file) {
   const size = info.size;
   tracked.set(file, { offset: size, leftover: Buffer.alloc(0), lastSeen: Date.now() });
   const sessionId = sessionIdFromFile(file);
-  if (sessionId) emitServiceTier(sessionId, effectiveServiceTier(sessionId));
+  if (sessionId) {
+    emitServiceTier(sessionId, effectiveServiceTier(sessionId));
+    scanThreadMetadata();
+  }
   if (size === 0) return;
   const start = Math.max(0, size - TAIL_BYTES);
   if (start > 0) primeHeadContext(file, start);
@@ -714,11 +757,13 @@ function poll() {
 defaultServiceTier = serviceTierFromConfig();
 scanGoal();
 scanServiceTiers();
-scanMonthlyUsage();
 for (const file of listRecent()) prime(file);
+scanThreadMetadata();
+setImmediate(scanMonthlyUsage);
 setInterval(poll, POLL_MS);
 setInterval(scanServiceTiers, SERVICE_TIER_POLL_MS);
 setInterval(scanGoal, SERVICE_TIER_POLL_MS);
+setInterval(scanThreadMetadata, SERVICE_TIER_POLL_MS);
 setInterval(scanMonthlyUsage, MONTHLY_USAGE_POLL_MS);
 setInterval(() => {
   try {

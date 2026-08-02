@@ -208,6 +208,7 @@ async function startWatcher(): Promise<void> {
     (sessionId, serviceTier) => setSessionServiceTier(sessionId, true, serviceTier),
     setRemoteGoals,
     setRemoteMonthlyUsage,
+    (sessionId, title) => store.setSessionMetadata(sessionId, true, title),
   );
   await Promise.all([localWatcher.start(), remoteWatcher.start()]);
 }
