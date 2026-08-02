@@ -313,7 +313,7 @@ test("a local active session wins over a newer remote active session", () => {
   expect(snap!.action).toBe("Running a command");
 });
 
-test("a remote active session wins over an idle local session", () => {
+test("a selected idle local session wins over remote background activity", () => {
   const store = new CodexStore(() => {});
   const now = Date.now();
   store.handleEvent(PARENT, false, { kind: "session_meta", isSubagent: false }, now - 5000);
@@ -323,8 +323,9 @@ test("a remote active session wins over an idle local session", () => {
   store.setDesktopSelection({ remote: false });
 
   const snap = store.snapshot();
-  expect(snap!.remote).toBe(true);
-  expect(snap!.action).toBe("Running a command");
+  expect(snap!.remote).toBe(false);
+  expect(snap!.action).toBe("Idle");
+  store.dispose();
 });
 
 test("desktop selection switches presence between local and remote sessions", () => {
@@ -376,6 +377,46 @@ test("selected remote project wins over another remote project", () => {
 
   store.setDesktopSelection({ remote: true, remotePath: "/srv/selected" });
   expect(store.snapshot()!.action).toBe("Idle");
+});
+
+test("selected remote chat title wins over a newer background chat in the same project", () => {
+  const store = new CodexStore(() => {});
+  const now = Date.now();
+  store.setSessionMetadata(PARENT, true, "Selected chat");
+  store.setSessionMetadata(OTHER, true, "Background chat");
+  store.handleEvent(PARENT, true, { kind: "session_meta", cwd: "/srv/app", isSubagent: false }, now - 5_000);
+  store.handleEvent(PARENT, true, { kind: "turn_ended" }, now - 4_000);
+  store.handleEvent(OTHER, true, { kind: "session_meta", cwd: "/srv/app", isSubagent: false }, now - 2_000);
+  store.handleEvent(OTHER, true, { kind: "tool", name: "shell_command" }, now - 1_000);
+  store.setDesktopSelection({ remote: true, remotePath: "/srv/app", threadTitle: "Selected chat" });
+
+  expect(store.snapshot()).toMatchObject({ remote: true, status: "idle", action: "Idle" });
+  store.dispose();
+});
+
+test("selected local CLI session id wins over another active local chat", () => {
+  const store = new CodexStore(() => {});
+  const now = Date.now();
+  store.handleEvent(PARENT, false, { kind: "session_meta", cwd: "D:\\selected", isSubagent: false }, now - 5_000);
+  store.handleEvent(PARENT, false, { kind: "turn_ended" }, now - 4_000);
+  store.handleEvent(OTHER, false, { kind: "session_meta", cwd: "D:\\background", isSubagent: false }, now - 2_000);
+  store.handleEvent(OTHER, false, { kind: "tool", name: "shell_command" }, now - 1_000);
+  store.setDesktopSelection({ remote: false, sessionId: PARENT });
+
+  expect(store.snapshot()).toMatchObject({ remote: false, status: "idle", action: "Idle" });
+  store.dispose();
+});
+
+test("an unmatched selected chat does not fall back to background activity", () => {
+  const store = new CodexStore(() => {});
+  const now = Date.now();
+  store.setSessionMetadata(PARENT, true, "Background chat");
+  store.handleEvent(PARENT, true, { kind: "session_meta", cwd: "/srv/app", isSubagent: false }, now - 1_000);
+  store.handleEvent(PARENT, true, { kind: "tool", name: "shell_command" }, now - 500);
+  store.setDesktopSelection({ remote: true, remotePath: "/srv/app", threadTitle: "Selected chat" });
+
+  expect(store.snapshot()).toBeUndefined();
+  store.dispose();
 });
 
 test("a selected remote project does not fall back to a different remote project", () => {

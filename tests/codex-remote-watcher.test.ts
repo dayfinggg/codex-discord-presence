@@ -27,6 +27,18 @@ test("remote watcher protocol accepts service-tier updates", () => {
   });
 });
 
+test("remote watcher protocol accepts thread metadata", () => {
+  expect(
+    parseRemoteWatcherMessage(
+      '{"s":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA","n":"Selected remote task"}',
+    ),
+  ).toEqual({
+    kind: "thread_metadata",
+    sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    title: "Selected remote task",
+  });
+});
+
 test("remote watcher protocol rejects malformed service-tier updates", () => {
   expect(parseRemoteWatcherMessage('{"s":"not-a-session","t":"priority"}')).toBeUndefined();
   expect(
