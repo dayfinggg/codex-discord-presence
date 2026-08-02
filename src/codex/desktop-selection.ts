@@ -7,6 +7,8 @@ import { createLogger } from "../util/logger.ts";
 
 const log = createLogger("codex-selection");
 const POLL_MS = 1_000;
+export const LOCAL_SESSION_BY_TITLE_QUERY =
+  "SELECT id FROM threads WHERE archived = 0 AND title <> '' AND (title = ? OR title LIKE ? OR ? LIKE title || '%') ORDER BY length(title) DESC, recency_at_ms DESC, updated_at_ms DESC LIMIT 1";
 
 export interface CodexDesktopSelection {
   remote: boolean;
@@ -249,7 +251,7 @@ export class CodexDesktopSelectionWatcher {
       const database = new DatabaseSync(this.stateDatabaseFile, { readOnly: true });
       try {
         const row = database.prepare(
-          "SELECT id FROM threads WHERE archived = 0 AND (title = ? OR title LIKE ? OR ? LIKE title || '%') ORDER BY length(title) DESC, recency_at_ms DESC, updated_at_ms DESC LIMIT 1",
+          LOCAL_SESSION_BY_TITLE_QUERY,
         ).get(title, `${title}%`, title) as { id?: unknown } | undefined;
         return typeof row?.id === "string" ? row.id.toLowerCase() : undefined;
       } finally {
