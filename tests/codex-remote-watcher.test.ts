@@ -30,12 +30,13 @@ test("remote watcher protocol accepts service-tier updates", () => {
 test("remote watcher protocol accepts thread metadata", () => {
   expect(
     parseRemoteWatcherMessage(
-      '{"s":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA","n":"Selected remote task"}',
+      '{"s":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA","n":" Selected remote task ","c":" /srv/app "}',
     ),
   ).toEqual({
     kind: "thread_metadata",
     sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     title: "Selected remote task",
+    cwd: "/srv/app",
   });
 });
 

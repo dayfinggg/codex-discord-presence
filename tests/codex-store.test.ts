@@ -394,6 +394,27 @@ test("selected remote chat title wins over a newer background chat in the same p
   store.dispose();
 });
 
+test("selecting an unprimed remote chat resolves cached server metadata", () => {
+  const store = new CodexStore(() => {});
+  store.setAppLiveness(true, Date.now() - 5_000);
+  store.setSessionMetadata(PARENT, true, "Selected remote chat", "/srv/app");
+  store.setDesktopSelection({
+    remote: true,
+    remotePath: "/srv/app",
+    threadTitle: "Selected remote chat",
+    model: "gpt-5.6-sol",
+    effort: "medium",
+  });
+
+  expect(store.snapshot()).toMatchObject({
+    remote: true,
+    status: "idle",
+    model: { id: "gpt-5.6-sol" },
+    effort: "medium",
+  });
+  store.dispose();
+});
+
 test("selected local CLI session id wins over another active local chat", () => {
   const store = new CodexStore(() => {});
   const now = Date.now();
@@ -404,6 +425,48 @@ test("selected local CLI session id wins over another active local chat", () => 
   store.setDesktopSelection({ remote: false, sessionId: PARENT });
 
   expect(store.snapshot()).toMatchObject({ remote: false, status: "idle", action: "Idle" });
+  store.dispose();
+});
+
+test("selecting an unprimed local chat creates a stable idle snapshot", () => {
+  const store = new CodexStore(() => {});
+  store.setAppLiveness(true, Date.now() - 5_000);
+  store.setDesktopSelection({
+    remote: false,
+    sessionId: PARENT,
+    threadTitle: "Old selected chat",
+    model: "gpt-5.6-terra",
+    effort: "high",
+  });
+
+  expect(store.snapshot()).toMatchObject({
+    status: "idle",
+    action: "Idle",
+    model: { id: "gpt-5.6-terra", displayName: "GPT-5.6 Terra" },
+    effort: "high",
+  });
+  store.dispose();
+});
+
+test("Desktop model selection overrides stale rollout settings", () => {
+  const store = new CodexStore(() => {});
+  const now = Date.now();
+  store.handleEvent(PARENT, false, { kind: "session_meta", isSubagent: false }, now - 2_000);
+  store.handleEvent(
+    PARENT,
+    false,
+    { kind: "turn_context", model: "gpt-5.6-sol", effort: "medium", planMode: false, realtime: false },
+    now - 1_000,
+  );
+  store.setDesktopSelection({
+    remote: false,
+    sessionId: PARENT,
+    model: "gpt-5.6-terra",
+    effort: "ultra",
+  });
+
+  expect(store.snapshot()!.model?.id).toBe("gpt-5.6-terra");
+  expect(store.snapshot()!.effort).toBe("ultra");
   store.dispose();
 });
 

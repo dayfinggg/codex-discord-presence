@@ -154,6 +154,7 @@ export class CodexStore {
   private readonly sessionServiceTiers = new Map<string, string | null>();
   private readonly sessionThreadSettings = new Map<string, TimedThreadSettings>();
   private readonly sessionTitles = new Map<string, string>();
+  private readonly sessionCwds = new Map<string, string>();
   private activeSince?: number;
   private appAlive = false;
   private appLivenessKnown = false;
@@ -208,6 +209,8 @@ export class CodexStore {
     const serviceTierKey = this.scopedSessionKey(sessionId, remote);
     const title = this.sessionTitles.get(serviceTierKey);
     if (title) session.title = title;
+    const cwd = this.sessionCwds.get(serviceTierKey);
+    if (cwd) session.cwd = cwd;
     if (this.sessionServiceTiers.has(serviceTierKey)) {
       this.applyServiceTier(session, this.sessionServiceTiers.get(serviceTierKey)!);
     }
@@ -436,15 +439,23 @@ export class CodexStore {
     this.onChange();
   }
 
-  setSessionMetadata(sessionId: string, remote: boolean, title: string): void {
+  setSessionMetadata(sessionId: string, remote: boolean, title: string, cwd?: string): void {
     const normalizedId = sessionId.trim().toLowerCase();
     const normalizedTitle = title.trim();
+    const normalizedCwd = cwd?.trim();
     if (!normalizedId || !normalizedTitle) return;
     const key = this.scopedSessionKey(normalizedId, remote);
-    if (this.sessionTitles.get(key) === normalizedTitle) return;
+    if (
+      this.sessionTitles.get(key) === normalizedTitle &&
+      (!normalizedCwd || this.sessionCwds.get(key) === normalizedCwd)
+    ) return;
     this.sessionTitles.set(key, normalizedTitle);
+    if (normalizedCwd) this.sessionCwds.set(key, normalizedCwd);
     const session = this.sessions.get(normalizedId);
-    if (session?.remote === remote) session.title = normalizedTitle;
+    if (session?.remote === remote) {
+      session.title = normalizedTitle;
+      if (normalizedCwd) session.cwd = normalizedCwd;
+    }
     this.cleared = false;
     this.onChange();
   }
@@ -513,14 +524,48 @@ export class CodexStore {
   }
 
   setDesktopSelection(selection: CodexDesktopSelection): void {
+    if (selection.remote && !selection.sessionId && selection.threadTitle) {
+      const selectedTitle = selection.threadTitle.trim().toLocaleLowerCase();
+      const selectedRoot = selection.remotePath ? normalizePath(selection.remotePath) : undefined;
+      for (const [key, title] of this.sessionTitles) {
+        if (!key.startsWith("remote:")) continue;
+        const candidateTitle = title.trim().toLocaleLowerCase();
+        if (
+          candidateTitle !== selectedTitle &&
+          !candidateTitle.startsWith(selectedTitle) &&
+          !selectedTitle.startsWith(candidateTitle)
+        ) continue;
+        const cwd = this.sessionCwds.get(key);
+        if (selectedRoot && cwd) {
+          const normalizedCwd = normalizePath(cwd);
+          if (normalizedCwd !== selectedRoot && !normalizedCwd.startsWith(`${selectedRoot}/`)) continue;
+        }
+        selection = { ...selection, sessionId: key.slice("remote:".length) };
+        break;
+      }
+    }
     const current = this.desktopSelection;
     if (
       current?.remote === selection.remote &&
       current.remotePath === selection.remotePath &&
       current.sessionId === selection.sessionId &&
-      current.threadTitle === selection.threadTitle
+      current.threadTitle === selection.threadTitle &&
+      current.model === selection.model &&
+      current.effort === selection.effort
     ) return;
     this.desktopSelection = selection;
+    if (selection.sessionId) {
+      const normalizedId = selection.sessionId.toLowerCase();
+      const existed = this.sessions.has(normalizedId);
+      const session = this.ensure(normalizedId, selection.remote, Date.now());
+      if (!existed) {
+        session.status = "idle";
+        session.action = "Idle";
+      }
+      if (selection.threadTitle) session.title = selection.threadTitle;
+      if (selection.model) this.applyModel(session, selection.model, Date.now());
+      if (selection.effort) this.applyEffort(session, effortOf(selection.effort), Date.now());
+    }
     this.cleared = false;
     this.onChange();
   }
@@ -675,8 +720,16 @@ export class CodexStore {
     }
     const monthlyUsage = active.remote ? this.remoteMonthlyUsage : this.localMonthlyUsage;
     if (monthlyUsage) state.monthlyUsage = monthlyUsage;
-    if (active.model) state.model = active.model;
-    if (active.effort) state.effort = active.effort;
+    const selectedSettingsApply = this.selectionRank(active) >= 3;
+    const selectedModel = selectedSettingsApply ? this.desktopSelection?.model : undefined;
+    const selectedEffort = selectedSettingsApply
+      ? effortOf(this.desktopSelection?.effort)
+      : undefined;
+    if (selectedModel) {
+      state.model = { id: selectedModel, displayName: codexModelDisplayName(selectedModel) };
+    } else if (active.model) state.model = active.model;
+    if (selectedEffort) state.effort = selectedEffort;
+    else if (active.effort) state.effort = active.effort;
     const accountLimits = this.appServerLimits ?? this.rolloutLimits;
     if (accountLimits) state.limits = mergeLimits(accountLimits, undefined);
     if (active.usage) {
