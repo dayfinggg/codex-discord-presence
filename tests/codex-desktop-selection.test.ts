@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import { LOCAL_SESSION_BY_TITLE_QUERY, parseCodexDesktopSelection, parseCodexUiSelection, selectLocalSessionByTitle } from "../src/codex/desktop-selection.ts";
+import { LOCAL_SESSION_BY_TITLE_QUERY, localProjectRootsFromState, parseCodexDesktopSelection, parseCodexModelLabel, parseCodexUiSelection, selectLocalSessionByTitle, selectionForCodexCliSession } from "../src/codex/desktop-selection.ts";
 
 test("local title lookup never selects an untitled background session", () => {
   const database = new DatabaseSync(":memory:");
@@ -19,6 +19,14 @@ test("generated Desktop title resolves the matching session in the selected proj
   ], ["D:\\work"])).toBe("selected");
 });
 
+test("selected project roots override stale active workspace roots", () => {
+  expect(localProjectRootsFromState(JSON.stringify({
+    "selected-project": { type: "local", projectId: "codex" },
+    "local-projects": { codex: { rootPaths: ["C:\\Users\\example\\.codex"] } },
+    "active-workspace-roots": ["D:\\work"],
+  }))).toEqual(["C:\\Users\\example\\.codex"]);
+});
+
 test("generated Desktop title does not guess from a weak match", () => {
   expect(selectLocalSessionByTitle("Проверить активность", [
     { id: "background", title: "Проверить сборку приложения", cwd: "D:\\work" },
@@ -26,11 +34,29 @@ test("generated Desktop title does not guess from a weak match", () => {
 });
 
 test("UI selection protocol accepts desktop and CLI selections", () => {
-  expect(parseCodexUiSelection('{"kind":"desktop","title":"Selected chat"}')).toEqual({
+  expect(parseCodexUiSelection('{"kind":"desktop","title":"Selected chat","modelLabel":"5.6 Sol Medium"}')).toEqual({
     kind: "desktop",
     title: "Selected chat",
+    model: "gpt-5.6-sol",
+    effort: "medium",
   });
   expect(parseCodexUiSelection('{"kind":"cli","pid":1234}')).toEqual({ kind: "cli", pid: 1234 });
+});
+
+test("Desktop model labels tolerate separators and Fast mode", () => {
+  expect(parseCodexModelLabel("5.6 Terra · High Fast")).toEqual({
+    model: "gpt-5.6-terra",
+    effort: "high",
+  });
+  expect(parseCodexModelLabel("Codex")).toEqual({});
+});
+
+test("an unresolved foreground CLI does not replace the selected Desktop chat", () => {
+  expect(selectionForCodexCliSession(undefined)).toBeUndefined();
+  expect(selectionForCodexCliSession("019fd1e3-bc69-7710-ac1a-406578518026")).toEqual({
+    remote: false,
+    sessionId: "019fd1e3-bc69-7710-ac1a-406578518026",
+  });
 });
 
 test("UI selection protocol rejects malformed selections", () => {

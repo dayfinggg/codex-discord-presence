@@ -52,9 +52,9 @@ function emitServiceTier(sessionId, serviceTier) {
   }
 }
 
-function emitThreadMetadata(sessionId, title) {
+function emitThreadMetadata(sessionId, title, cwd) {
   try {
-    process.stdout.write(JSON.stringify({ s: sessionId, n: title }) + "\n");
+    process.stdout.write(JSON.stringify({ s: sessionId, n: title, c: cwd }) + "\n");
   } catch (e) {
     process.exit(0);
   }
@@ -65,19 +65,19 @@ function scanThreadMetadata() {
   try {
     if (!threadDatabase) {
       threadDatabase = new DatabaseSync(path.join(HOME, "state_5.sqlite"), { readOnly: true });
-      threadStatement = threadDatabase.prepare("SELECT title FROM threads WHERE id = ? LIMIT 1");
+      threadStatement = threadDatabase.prepare(
+        "SELECT id, title, cwd FROM threads WHERE archived = 0 AND title <> '' ORDER BY recency_at_ms DESC LIMIT 2000",
+      );
     }
-    const sessionIds = new Set();
-    for (const file of tracked.keys()) {
-      const sessionId = sessionIdFromFile(file);
-      if (sessionId) sessionIds.add(sessionId);
-    }
-    for (const sessionId of sessionIds) {
-      const row = threadStatement.get(sessionId);
+    for (const row of threadStatement.all()) {
+      const sessionId = typeof row?.id === "string" ? row.id.toLowerCase() : "";
       const title = typeof row?.title === "string" ? row.title.trim() : "";
-      if (!title || lastThreadMetadata.get(sessionId) === title) continue;
-      lastThreadMetadata.set(sessionId, title);
-      emitThreadMetadata(sessionId, title);
+      const cwd = typeof row?.cwd === "string" ? row.cwd.trim() : "";
+      if (!SESSION_ID.test(sessionId)) continue;
+      const metadataKey = `${title}\0${cwd}`;
+      if (!title || lastThreadMetadata.get(sessionId) === metadataKey) continue;
+      lastThreadMetadata.set(sessionId, metadataKey);
+      emitThreadMetadata(sessionId, title, cwd);
     }
   } catch (e) {
     try {

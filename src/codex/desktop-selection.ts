@@ -23,10 +23,12 @@ export interface CodexDesktopSelection {
   remotePath?: string;
   sessionId?: string;
   threadTitle?: string;
+  model?: string;
+  effort?: string;
 }
 
 export type CodexUiSelection =
-  | { kind: "desktop"; title: string }
+  | { kind: "desktop"; title: string; model?: string; effort?: string }
   | { kind: "cli"; pid: number };
 
 const WINDOWS_UI_WATCH_SCRIPT = String.raw`
@@ -56,6 +58,7 @@ while ($true) {
             $elements = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
             $selected = $null
             $selectedScore = 0
+            $modelLabel = $null
             for ($i = 0; $i -lt $elements.Count; $i++) {
                 $element = $elements.Item($i)
                 $type = $element.Current.ControlType
@@ -66,6 +69,8 @@ while ($true) {
                 if ([string]::IsNullOrWhiteSpace($element.Current.Name)) { continue }
                 $class = $element.Current.ClassName
                 $score = 0
+                if ($type -eq [System.Windows.Automation.ControlType]::Button -and
+                    $class -match 'max-w-\[320px\]') { $score += 1000 }
                 try {
                     $pattern = $element.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
                     if ($pattern.Current.IsSelected) { $score += 100 }
@@ -77,9 +82,14 @@ while ($true) {
                     $selected = $element
                     $selectedScore = $score
                 }
+                if ($type -eq [System.Windows.Automation.ControlType]::Button -and
+                    $class -match 'h-token-button-composer' -and
+                    $element.Current.Name -match '^\d+(?:\.\d+)+(?:\s|$)') {
+                    $modelLabel = $element.Current.Name
+                }
             }
             if ($selected -and $selectedScore -gt 0) {
-                $message = @{ kind = 'desktop'; title = $selected.Current.Name }
+                $message = @{ kind = 'desktop'; title = $selected.Current.Name; modelLabel = $modelLabel }
             }
         }
         if ($foreground.ProcessName -ine 'ChatGPT') {
@@ -121,10 +131,64 @@ export function parseCodexUiSelection(line: string): CodexUiSelection | undefine
       return { kind: "cli", pid: value.pid };
     }
     if (value.kind === "desktop" && typeof value.title === "string" && value.title.trim() !== "") {
-      return { kind: "desktop", title: value.title.trim() };
+      const settings = parseCodexModelLabel(
+        typeof value.modelLabel === "string" ? value.modelLabel : undefined,
+      );
+      return { kind: "desktop", title: value.title.trim(), ...settings };
     }
   } catch {}
   return undefined;
+}
+
+const EFFORT_LABELS = new Set(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+
+export function parseCodexModelLabel(
+  label: string | undefined,
+): { model?: string; effort?: string } {
+  if (!label) return {};
+  const tokens = label
+    .trim()
+    .replace(/[·•]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const version = tokens.shift();
+  if (!version || !/^\d+(?:\.\d+)+$/.test(version)) return {};
+  const effortIndex = tokens.findIndex((token) => EFFORT_LABELS.has(token.toLowerCase()));
+  const effort = effortIndex >= 0 ? tokens[effortIndex]!.toLowerCase() : undefined;
+  const suffix = tokens
+    .slice(0, effortIndex >= 0 ? effortIndex : tokens.length)
+    .filter((token) => token.toLowerCase() !== "fast")
+    .map((token) => token.toLowerCase())
+    .join("-");
+  return {
+    model: `gpt-${version}${suffix ? `-${suffix}` : ""}`,
+    ...(effort ? { effort } : {}),
+  };
+}
+
+export function selectionForCodexCliSession(
+  sessionId: string | undefined,
+): CodexDesktopSelection | undefined {
+  return sessionId ? { remote: false, sessionId } : undefined;
+}
+
+export function localProjectRootsFromState(raw: string): string[] {
+  try {
+    const state = JSON.parse(raw) as Record<string, unknown>;
+    const selected = state["selected-project"] as Record<string, unknown> | undefined;
+    if (selected?.type === "local" && typeof selected.projectId === "string") {
+      const projects = state["local-projects"] as Record<string, unknown> | undefined;
+      const project = projects?.[selected.projectId] as Record<string, unknown> | undefined;
+      const selectedRoots = Array.isArray(project?.rootPaths)
+        ? project.rootPaths.filter((root): root is string => typeof root === "string" && root.trim() !== "")
+        : [];
+      if (selectedRoots.length > 0) return selectedRoots;
+    }
+    const activeRoots = state["active-workspace-roots"];
+    return Array.isArray(activeRoots)
+      ? activeRoots.filter((root): root is string => typeof root === "string" && root.trim() !== "")
+      : [];
+  } catch { return []; }
 }
 
 function normalizedPath(value: string): string {
@@ -287,25 +351,20 @@ export class CodexDesktopSelectionWatcher {
     if (!ui) return parseCodexDesktopSelection(raw);
     if (ui.kind === "cli") {
       const sessionId = this.sessionIdForProcess(ui.pid);
-      return sessionId ? { remote: false, sessionId } : parseCodexDesktopSelection(raw);
+      return selectionForCodexCliSession(sessionId);
     }
     const base = parseCodexDesktopSelection(raw);
-    if (base?.remote) return { ...base, threadTitle: ui.title };
+    if (base?.remote) {
+      return { ...base, threadTitle: ui.title, model: ui.model, effort: ui.effort };
+    }
     const sessionId = this.localSessionId(ui.title, this.localProjectRoots(raw));
-    return sessionId ? { remote: false, sessionId } : { remote: false, threadTitle: ui.title };
+    return sessionId
+      ? { remote: false, sessionId, threadTitle: ui.title, model: ui.model, effort: ui.effort }
+      : { remote: false, threadTitle: ui.title, model: ui.model, effort: ui.effort };
   }
 
   private localProjectRoots(raw: string): string[] {
-    try {
-      const state = JSON.parse(raw) as Record<string, unknown>;
-      const selected = state["selected-project"] as Record<string, unknown> | undefined;
-      if (selected?.type !== "local" || typeof selected.projectId !== "string") return [];
-      const projects = state["local-projects"] as Record<string, unknown> | undefined;
-      const project = projects?.[selected.projectId] as Record<string, unknown> | undefined;
-      return Array.isArray(project?.rootPaths)
-        ? project.rootPaths.filter((root): root is string => typeof root === "string" && root.trim() !== "")
-        : [];
-    } catch { return []; }
+    return localProjectRootsFromState(raw);
   }
 
   private localSessionId(title: string, projectRoots: string[]): string | undefined {

@@ -27,7 +27,7 @@ const SSH_ALIAS = /^[a-z0-9](?:[a-z0-9._-]{0,252}[a-z0-9])?$/i;
 
 export type RemoteWatcherMessage =
   | { kind: "rollout"; file: string; line: string }
-  | { kind: "thread_metadata"; sessionId: string; title: string }
+  | { kind: "thread_metadata"; sessionId: string; title: string; cwd?: string }
   | { kind: "service_tier"; sessionId: string; serviceTier: string | null }
   | { kind: "goals"; states: ReadonlyMap<string, GoalState> }
   | { kind: "monthly_usage"; agent: "claude" | "codex"; usage: RemoteMonthlyUsageRaw };
@@ -75,6 +75,7 @@ export function parseRemoteWatcherMessage(line: string): RemoteWatcherMessage | 
     l?: unknown;
     s?: unknown;
     n?: unknown;
+    c?: unknown;
     t?: unknown;
     G?: unknown;
     M?: unknown;
@@ -127,7 +128,13 @@ export function parseRemoteWatcherMessage(line: string): RemoteWatcherMessage | 
   }
   if (typeof record.s === "string" && SESSION_ID.test(record.s)) {
     if (typeof record.n === "string" && record.n.trim() !== "") {
-      return { kind: "thread_metadata", sessionId: record.s.toLowerCase(), title: record.n.trim() };
+      const cwd = typeof record.c === "string" && record.c.trim() !== "" ? record.c.trim() : undefined;
+      return {
+        kind: "thread_metadata",
+        sessionId: record.s.toLowerCase(),
+        title: record.n.trim(),
+        ...(cwd ? { cwd } : {}),
+      };
     }
     if (record.t === null || typeof record.t === "string") {
       return { kind: "service_tier", sessionId: record.s.toLowerCase(), serviceTier: record.t };
@@ -199,7 +206,7 @@ export class RemoteWatcher {
       agent: "claude" | "codex",
       usage: RemoteMonthlyUsageRaw,
     ) => void,
-    private readonly onThreadMetadata?: (sessionId: string, title: string) => void,
+    private readonly onThreadMetadata?: (sessionId: string, title: string, cwd?: string) => void,
   ) {}
 
   async start(): Promise<void> {
@@ -295,7 +302,7 @@ export class RemoteWatcher {
       return;
     }
     if (message.kind === "thread_metadata") {
-      this.onThreadMetadata?.(message.sessionId, message.title);
+      this.onThreadMetadata?.(message.sessionId, message.title, message.cwd);
       return;
     }
     if (message.kind === "goals") {
