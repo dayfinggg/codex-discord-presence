@@ -1,7 +1,7 @@
 {
   "name": "codex-discord-presence",
   "version": "15.1.0",
-  "description": "Cross-platform Discord Rich Presence for OpenAI Codex Desktop and Codex CLI with live models, plan limits, token usage, goals, Fast mode, and secure SSH remotes.",
+  "description": "ChatGPT-themed Discord Rich Presence for OpenAI Codex Desktop and Codex CLI with live models, plan limits, token usage, goals, Fast mode, and secure SSH remotes.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {

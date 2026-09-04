@@ -168,7 +168,7 @@ export function buildStateLine(state: PresenceState): string {
     : state.action.trim();
   const tail = tailChips(state);
   const priority = [head, action, tail].filter((segment) => segment !== "");
-  if (priority.length === 0) return clamp("Codex");
+  if (priority.length === 0) return clamp("ChatGPT");
 
   const line = priority.join(SEP);
   if (byteLength(line) <= MAX) return clamp(line);

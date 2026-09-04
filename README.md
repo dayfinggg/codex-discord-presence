@@ -1,15 +1,15 @@
-# Codex Discord Presence
+# ChatGPT Discord Presence
 
 [![npm version](https://img.shields.io/npm/v/codex-discord-presence?logo=npm)](https://www.npmjs.com/package/codex-discord-presence)
 [![CI](https://github.com/dayfinggg/codex-discord-presence/actions/workflows/ci.yml/badge.svg)](https://github.com/dayfinggg/codex-discord-presence/actions/workflows/ci.yml)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22.18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Cross-platform Discord Rich Presence for OpenAI Codex Desktop and Codex CLI. Show the active model,
+ChatGPT-themed Discord Rich Presence for OpenAI Codex Desktop and Codex CLI. Show the active model,
 reasoning effort, plan limits, reset countdowns, token usage, cost, context, goals, Fast mode, agents,
 and secure remote SSH sessions on Windows, macOS, and Linux.
 
-![Codex Discord Rich Presence with plan limits, model, token usage, cost, and session timer](assets/codex-presence-cover.png)
+![ChatGPT icon for the dark theme](assets/chatgpt-liquid-dark.png)
 
 ## Quick start
 
@@ -136,11 +136,11 @@ Ready-to-upload images are in [`assets/`](assets). The default application uses 
 
 | Key | File |
 | --- | --- |
-| `codex-color` | `assets/codex-color.png` |
-| `codex-liquid-light` | `assets/codex-liquid-light.png` |
-| `codex-liquid-dark` | `assets/codex-liquid-dark.png` |
-| `codex-stats-light` | `assets/codex-stats-light.png` |
-| `codex-stats-dark` | `assets/codex-stats-dark.png` |
+| `chatgpt-liquid-light` | `assets/chatgpt-liquid-light.png` |
+| `chatgpt-liquid-light` | `assets/chatgpt-liquid-light.png` |
+| `chatgpt-liquid-dark` | `assets/chatgpt-liquid-dark.png` |
+| `chatgpt-stats-light` | `assets/chatgpt-stats-light.png` |
+| `chatgpt-stats-dark` | `assets/chatgpt-stats-dark.png` |
 | `usage-stats` | `assets/usage-stats.png` |
 
 ## License and attribution

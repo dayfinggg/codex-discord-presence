@@ -1,0 +1,14 @@
+{
+  "icons": {
+    "author": "designer_26.2",
+    "light": "https://macosicons.com/icon/chatgpt-default-macos-26-2-KQd6S28qRb",
+    "dark": "https://macosicons.com/icon/chatgpt-dark-macos-26-2-GegjgOFpz4"
+  },
+  "statistics": {
+    "tool": "image_gen",
+    "prompts": {
+      "light": "Create a circular ChatGPT-style cost statistics badge, a round medallion with three ascending vertical rounded bars. Match the reference's glossy light silver medallion and graphite bars monochrome embossed material. CHANGE the silhouette from rounded square to a perfect CIRCLE. Remove the entire background OUTSIDE THE CIRCLE. Deliver a PNG cutout with a REAL TRANSPARENT ALPHA CHANNEL outside the round badge. The transparent area must have alpha 0, no solid color pixels and no drawn checker pattern. No rectangular tile or square plate anywhere. Only one circular icon, centered and filling 85% of a square canvas. Crisp simple three-bar chart, no labels, text, currency glyphs or other logos. Keep the round badge edge clean. The background must be transparent, not white, gray or black.",
+      "dark": "Create a circular ChatGPT-style cost statistics badge, a round medallion with three ascending vertical rounded bars. Match the reference's glossy dark graphite medallion and pearl white bars monochrome embossed material. CHANGE the silhouette from rounded square to a perfect CIRCLE. Remove the entire background OUTSIDE THE CIRCLE. Deliver a PNG cutout with a REAL TRANSPARENT ALPHA CHANNEL outside the round badge. The transparent area must have alpha 0, no solid color pixels and no drawn checker pattern. No rectangular tile or square plate anywhere. Only one circular icon, centered and filling 85% of a square canvas. Crisp simple three-bar chart, no labels, text, currency glyphs or other logos. Keep the round badge edge clean. The background must be transparent, not white, gray or black."
+    }
+  }
+}

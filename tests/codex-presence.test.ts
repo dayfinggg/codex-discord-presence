@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { codexModelDisplayName, buildCodexActivity } from "../src/codex/presence.ts";
 import type { PresenceState } from "../src/types.ts";
 
-const assets = { appName: "Codex", largeImageKey: "codex-color" };
+const assets = { appName: "ChatGPT", largeImageKey: "chatgpt-liquid-light" };
 
 function base(): PresenceState {
   return {
@@ -22,7 +22,7 @@ test("model display names", () => {
   expect(codexModelDisplayName("gpt-5.4-mini")).toBe("GPT-5.4 Mini");
   expect(codexModelDisplayName("gpt-5-codex")).toBe("GPT-5 Codex");
   expect(codexModelDisplayName("gpt-6.1-nano")).toBe("GPT-6.1 Nano");
-  expect(codexModelDisplayName(undefined)).toBe("Codex");
+  expect(codexModelDisplayName(undefined)).toBe("ChatGPT");
 });
 
 test("gpt-5.6 family display names", () => {
@@ -145,7 +145,7 @@ test("Fast is appended to the model while the goal remains in the tail", () => {
 });
 
 test("omitting custom art lets Discord use the application icon", () => {
-  const activity = buildCodexActivity(base(), { appName: "Codex" });
+  const activity = buildCodexActivity(base(), { appName: "ChatGPT" });
   expect(activity.largeImageKey).toBeUndefined();
   expect(activity.largeImageUrl).toBeUndefined();
   expect(activity.largeImageText).toBeUndefined();
@@ -153,7 +153,7 @@ test("omitting custom art lets Discord use the application icon", () => {
 
 test("adds the configured repository button", () => {
   const activity = buildCodexActivity(base(), {
-    appName: "Codex",
+    appName: "ChatGPT",
     buttons: [{ label: "Get Codex Presence", url: "https://github.com/example/codex" }],
   });
   expect(activity.buttons).toEqual([
@@ -180,7 +180,7 @@ test("hover includes cost when present", () => {
 
 test("hover without usage falls back to app name", () => {
   const activity = buildCodexActivity(base(), assets);
-  expect(activity.largeImageText).toBe("Codex");
+  expect(activity.largeImageText).toBe("ChatGPT");
 });
 
 test("small statistics tooltip uses the compact Light-era labels", () => {
