@@ -15,6 +15,7 @@ export function activityAssetsForTheme(
 ): ActivityAssets {
   return {
     appName: assets.appName,
+    buttons: assets.buttons,
     largeImageKey:
       theme === "dark"
         ? assets.largeImageKeyDark ?? assets.largeImageKey

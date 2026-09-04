@@ -16,6 +16,19 @@ test("cached tokens are a subset of input and never double counted", () => {
   expect(cost.total).toBeCloseTo(0.125, 6);
 });
 
+test("GPT-5.6 cache writes use the official 1.25x input rate without double counting", () => {
+  const cost = codexCost("gpt-5.6-sol", {
+    input: 1_000_000,
+    cachedInput: 200_000,
+    cacheWriteInput: 300_000,
+    output: 0,
+  });
+  expect(cost.input).toBeCloseTo(2, 6);
+  expect(cost.cached).toBeCloseTo(0.08, 6);
+  expect(cost.cacheWrite).toBeCloseTo(1.5, 6);
+  expect(cost.total).toBeCloseTo(3.58, 6);
+});
+
 test("gpt-5.4-mini uses the official mini rate", () => {
   const cost = codexCost("gpt-5.4-mini", { input: 1_000_000, cachedInput: 0, output: 1_000_000 });
   expect(cost.input).toBeCloseTo(0.75, 6);
@@ -30,15 +43,20 @@ test("the gpt-5.6 alias is priced like gpt-5.6-sol", () => {
 
 test("gpt-5.6 family uses the official rates", () => {
   const sol = codexCost("gpt-5.6-sol", { input: 1_000_000, cachedInput: 0, output: 1_000_000 });
-  expect(sol.input).toBeCloseTo(5, 6);
-  expect(sol.output).toBeCloseTo(30, 6);
+  expect(sol.input).toBeCloseTo(4, 6);
+  expect(sol.output).toBeCloseTo(20, 6);
   const terra = codexCost("gpt-5.6-terra", { input: 1_000_000, cachedInput: 0, output: 1_000_000 });
-  expect(terra.input).toBeCloseTo(2.5, 6);
-  expect(terra.output).toBeCloseTo(15, 6);
+  expect(terra.input).toBeCloseTo(2, 6);
+  expect(terra.output).toBeCloseTo(12, 6);
   const luna = codexCost("gpt-5.6-luna", { input: 1_000_000, cachedInput: 1_000_000, output: 1_000_000 });
   expect(luna.input).toBeCloseTo(0, 6);
-  expect(luna.cached).toBeCloseTo(0.1, 6);
-  expect(luna.output).toBeCloseTo(6, 6);
+  expect(luna.cached).toBeCloseTo(0.02, 6);
+  expect(luna.output).toBeCloseTo(1.2, 6);
+});
+
+test("Astra standard pricing includes cache reads and writes", () => {
+  const cost = codexCost(" GPT-6-ASTRA-2026-09-03-fast ", { input: 1_000_000, cachedInput: 200_000, cacheWriteInput: 300_000, output: 100_000 });
+  expect(cost).toEqual({ input: 5, cached: 0.2, cacheWrite: 3.75, output: 5, total: 13.95 });
 });
 
 test("dated snapshots map to the base model price", () => {

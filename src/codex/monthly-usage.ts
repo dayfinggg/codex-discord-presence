@@ -1,5 +1,7 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { open, readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { createInterface } from "node:readline";
 import type { MonthlyUsage, UsageTotals } from "../types.ts";
 import { createLogger } from "../util/logger.ts";
 import { codexCost } from "./cost.ts";
@@ -10,6 +12,7 @@ const DEFAULT_POLL_MS = 60_000;
 interface RawUsage {
   input: number;
   cachedInput: number;
+  cacheWriteInput: number;
   output: number;
   reasoning: number;
   total: number;
@@ -41,16 +44,29 @@ function rawUsage(value: unknown): RawUsage | undefined {
   if (!usage) return undefined;
   const input = count(usage.input_tokens ?? usage.prompt_tokens);
   const cachedInput = Math.min(input, count(usage.cached_input_tokens ?? usage.cached_tokens));
+  const cacheWriteInput = Math.min(
+    Math.max(0, input - cachedInput),
+    count(usage.cache_write_input_tokens ?? usage.cache_write_tokens),
+  );
   const output = count(usage.output_tokens ?? usage.completion_tokens);
   const reasoning = count(usage.reasoning_output_tokens);
   const total = count(usage.total_tokens) || input + output;
-  return { input, cachedInput, output, reasoning, total };
+  return { input, cachedInput, cacheWriteInput, output, reasoning, total };
 }
 
 function subtract(current: RawUsage, previous: RawUsage | undefined): RawUsage {
+  if (
+    previous &&
+    (current.input < previous.input ||
+      current.cachedInput < previous.cachedInput ||
+      current.cacheWriteInput < previous.cacheWriteInput ||
+      current.output < previous.output ||
+      current.total < previous.total)
+  ) return current;
   return {
     input: Math.max(0, current.input - (previous?.input ?? 0)),
     cachedInput: Math.max(0, current.cachedInput - (previous?.cachedInput ?? 0)),
+    cacheWriteInput: Math.max(0, current.cacheWriteInput - (previous?.cacheWriteInput ?? 0)),
     output: Math.max(0, current.output - (previous?.output ?? 0)),
     reasoning: Math.max(0, current.reasoning - (previous?.reasoning ?? 0)),
     total: Math.max(0, current.total - (previous?.total ?? 0)),
@@ -82,10 +98,8 @@ function nestedUsageEntry(record: Record<string, unknown>): Record<string, unkno
   return record;
 }
 
-function parseFile(text: string): UsageEvent[] {
+function parseLines(lines: Iterable<string>, subagent: boolean): UsageEvent[] {
   const events: UsageEvent[] = [];
-  const lines = text.split(/\r?\n/);
-  const subagent = text.slice(0, 16 * 1024).includes("thread_spawn");
   const usageSeconds: string[] = [];
   if (subagent) {
     for (const line of lines) {
@@ -113,6 +127,11 @@ function parseFile(text: string): UsageEvent[] {
 
   for (const line of lines) {
     if (line.charCodeAt(0) !== 123) continue;
+    if (
+      !line.includes("turn_context") &&
+      !line.includes("token_count") &&
+      !line.includes("usage")
+    ) continue;
     let record: Record<string, unknown>;
     try {
       record = JSON.parse(line) as Record<string, unknown>;
@@ -139,10 +158,10 @@ function parseFile(text: string): UsageEvent[] {
         skipReplay = false;
       }
       const last = rawUsage(info?.last_token_usage);
-      const usage = last ?? (total ? subtract(total, previousTotals) : undefined);
+      const usage = total ? subtract(total, previousTotals) : last;
       if (total) previousTotals = total;
       if (!usage || !at) continue;
-      if (usage.input === 0 && usage.cachedInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
+      if (usage.input === 0 && usage.cachedInput === 0 && usage.cacheWriteInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
       const model = modelFrom(payload) ?? modelFrom(info) ?? currentModel ?? "gpt-5";
       events.push({ timestamp: at, model, ...usage });
       continue;
@@ -153,11 +172,40 @@ function parseFile(text: string): UsageEvent[] {
     if (!usage) continue;
     const at = timestamp(entry.timestamp ?? entry.created_at ?? entry.createdAt ?? record.timestamp);
     if (!at) continue;
-    if (usage.input === 0 && usage.cachedInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
+    if (usage.input === 0 && usage.cachedInput === 0 && usage.cacheWriteInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
     const model = modelFrom(entry) ?? modelFrom(record) ?? currentModel ?? "gpt-5";
     events.push({ timestamp: at, model, ...usage });
   }
   return events;
+}
+
+async function isSubagentSession(file: string): Promise<boolean> {
+  const handle = await open(file, "r");
+  try {
+    const buffer = Buffer.alloc(16 * 1024);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead).includes("thread_spawn");
+  } finally {
+    await handle.close();
+  }
+}
+
+async function parseFile(file: string): Promise<UsageEvent[]> {
+  const input = createReadStream(file, { encoding: "utf8" });
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  try {
+    const relevantLines: string[] = [];
+    for await (const line of lines) {
+      if (
+        line.charCodeAt(0) === 123 &&
+        (line.includes("turn_context") || line.includes("token_count") || line.includes("usage"))
+      ) relevantLines.push(line);
+    }
+    return parseLines(relevantLines, await isSubagentSession(file));
+  } finally {
+    lines.close();
+    input.destroy();
+  }
 }
 
 async function collectJsonl(dir: string): Promise<string[]> {
@@ -212,11 +260,11 @@ export async function readCodexMonthlyUsageRaw(
         if (entry && entry.size === info.size && entry.mtimeMs === info.mtimeMs) {
           fileEvents = entry.events;
         } else {
-          fileEvents = parseFile(await readFile(file, "utf8"));
+          fileEvents = await parseFile(file);
           cache.entries.set(file, { size: info.size, mtimeMs: info.mtimeMs, events: fileEvents });
         }
       } else {
-        fileEvents = parseFile(await readFile(file, "utf8"));
+        fileEvents = await parseFile(file);
       }
       for (const event of fileEvents) events.push(event);
     } catch {
@@ -237,6 +285,7 @@ export async function readCodexMonthlyUsageRaw(
       event.model,
       event.input,
       event.cachedInput,
+      event.cacheWriteInput,
       event.output,
       event.reasoning,
       event.total,
@@ -253,6 +302,7 @@ export async function readCodexMonthlyUsageRaw(
     bucket.input += event.input;
     bucket.output += event.output;
     bucket.cacheRead += event.cachedInput;
+    bucket.cacheWrite += event.cacheWriteInput;
     totalTokens += event.total || event.input + event.output;
     }
     return { totalTokens, usageByModel };
@@ -280,6 +330,7 @@ export function codexMonthlyUsage(raw: CodexMonthlyUsageRaw): MonthlyUsage {
     costUsd += codexCost(model, {
       input: usage.input,
       cachedInput: usage.cacheRead,
+      cacheWriteInput: usage.cacheWrite,
       output: usage.output,
     }).total;
     }

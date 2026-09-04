@@ -22,8 +22,19 @@ test("Codex monthly usage uses token deltas and deduplicates copied events", asy
         payload: {
           type: "token_count",
           info: {
-            total_token_usage: { input_tokens: 100, cached_input_tokens: 20, output_tokens: 10, total_tokens: 110 },
-            last_token_usage: { input_tokens: 100, cached_input_tokens: 20, output_tokens: 10, total_tokens: 110 },
+            total_token_usage: { input_tokens: 100, cached_input_tokens: 20, cache_write_input_tokens: 5, output_tokens: 10, total_tokens: 110 },
+            last_token_usage: { input_tokens: 100, cached_input_tokens: 20, cache_write_input_tokens: 5, output_tokens: 10, total_tokens: 110 },
+          },
+        },
+      },
+      {
+        timestamp: "2026-07-15T10:00:30.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: { input_tokens: 100, cached_input_tokens: 20, cache_write_input_tokens: 5, output_tokens: 10, total_tokens: 110 },
+            last_token_usage: { input_tokens: 100, cached_input_tokens: 20, cache_write_input_tokens: 5, output_tokens: 10, total_tokens: 110 },
           },
         },
       },
@@ -33,7 +44,7 @@ test("Codex monthly usage uses token deltas and deduplicates copied events", asy
         payload: {
           type: "token_count",
           info: {
-            total_token_usage: { input_tokens: 160, cached_input_tokens: 50, output_tokens: 40, total_tokens: 200 },
+            total_token_usage: { input_tokens: 160, cached_input_tokens: 50, cache_write_input_tokens: 8, output_tokens: 40, total_tokens: 200 },
           },
         },
       },
@@ -45,7 +56,7 @@ test("Codex monthly usage uses token deltas and deduplicates copied events", asy
     expect(raw).toMatchObject({
       totalTokens: 200,
       usageByModel: {
-        "gpt-5.6-sol": { input: 160, output: 40, cacheRead: 50, cacheWrite: 0 },
+        "gpt-5.6-sol": { input: 160, output: 40, cacheRead: 50, cacheWrite: 8 },
       },
     });
     expect(raw.day?.totalTokens).toBe(200);

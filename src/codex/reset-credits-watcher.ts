@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { delimiter, extname, join } from "node:path";
 import type { Limits, LimitWindow } from "../types.ts";
@@ -14,11 +14,18 @@ interface CodexCommand {
   args: string[];
 }
 
-interface ResetCreditsResult {
+export interface ResetCreditsResult {
   ok: boolean;
   available?: number;
   limits?: Limits;
 }
+
+export interface ResetCreditsReader {
+  read(): Promise<ResetCreditsResult>;
+  close(): void;
+}
+
+export type ResetCreditsReaderFactory = (command: CodexCommand) => ResetCreditsReader;
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
@@ -157,85 +164,148 @@ export function codexAppServerCommands(
     .map(directCommand);
 }
 
-function requestResetCredits(command: CodexCommand): Promise<ResetCreditsResult> {
-  return new Promise((resolve) => {
-    const child = spawn(command.executable, command.args, {
+class CodexAppServerReader implements ResetCreditsReader {
+  private child?: ChildProcessWithoutNullStreams;
+  private startPromise?: Promise<boolean>;
+  private buffer = "";
+  private nextId = 1;
+  private pending = new Map<
+    number,
+    {
+      resolve: (message: Record<string, unknown> | undefined) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+
+  constructor(private readonly command: CodexCommand) {}
+
+  async read(): Promise<ResetCreditsResult> {
+    if (!(await this.ensureStarted())) return { ok: false };
+    const message = await this.call("account/rateLimits/read");
+    if (!message || message.error !== undefined) return { ok: false };
+    const available = resetCreditsFromRateLimitsResponse(message);
+    const limits = limitsFromRateLimitsResponse(message);
+    return {
+      ok: true,
+      ...(available === undefined ? {} : { available }),
+      ...(limits === undefined ? {} : { limits }),
+    };
+  }
+
+  close(): void {
+    const child = this.child;
+    this.child = undefined;
+    this.startPromise = undefined;
+    this.failPending();
+    child?.kill();
+  }
+
+  private ensureStarted(): Promise<boolean> {
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this.start();
+    return this.startPromise;
+  }
+
+  private async start(): Promise<boolean> {
+    const child = spawn(this.command.executable, this.command.args, {
       env: process.env,
-      stdio: ["pipe", "pipe", "ignore"],
+      stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
-    let settled = false;
-    let buffer = "";
-    const finish = (result: ResetCreditsResult): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      child.kill();
-      resolve(result);
-    };
-    const timer = setTimeout(() => finish({ ok: false }), REQUEST_TIMEOUT_MS);
-
-    child.once("error", () => finish({ ok: false }));
-    child.once("exit", () => finish({ ok: false }));
-    child.stdin.on("error", () => finish({ ok: false }));
+    this.child = child;
+    child.stderr.resume();
+    child.once("error", () => this.handleExit(child));
+    child.once("exit", () => this.handleExit(child));
+    child.stdin.on("error", () => this.handleExit(child));
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
-      buffer += chunk;
+      this.buffer += chunk;
       while (true) {
-        const newline = buffer.indexOf("\n");
+        const newline = this.buffer.indexOf("\n");
         if (newline < 0) break;
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
+        const line = this.buffer.slice(0, newline).trim();
+        this.buffer = this.buffer.slice(newline + 1);
         if (line === "") continue;
         try {
           const message = object(JSON.parse(line));
-          if (message?.id === 1) {
-            if (message.error !== undefined) {
-              finish({ ok: false });
-              continue;
-            }
-            const messages = [
-              { method: "initialized", params: {} },
-              { method: "account/rateLimits/read", id: 3 },
-            ];
-            child.stdin.write(messages.map((item) => JSON.stringify(item)).join("\n") + "\n");
-            continue;
-          }
-          if (message?.id !== 3) continue;
-          if (message.error !== undefined) finish({ ok: false });
-          else {
-            const available = resetCreditsFromRateLimitsResponse(message);
-            const limits = limitsFromRateLimitsResponse(message);
-            finish({
-              ok: true,
-              ...(available === undefined ? {} : { available }),
-              ...(limits === undefined ? {} : { limits }),
-            });
-          }
+          const id = message?.id;
+          if (typeof id !== "number") continue;
+          const pending = this.pending.get(id);
+          if (!pending) continue;
+          this.pending.delete(id);
+          clearTimeout(pending.timer);
+          pending.resolve(message);
         } catch {}
       }
     });
 
-    child.once("spawn", () => {
-      const initialize = {
-        method: "initialize",
-        id: 1,
-        params: {
-          clientInfo: {
-            name: "codex-discord-presence",
-            title: "Codex Discord Presence",
-            version: "1.0.0",
-          },
-        },
-      };
+    const spawned = await new Promise<boolean>((resolve) => {
+      child.once("spawn", () => resolve(true));
+      child.once("error", () => resolve(false));
+    });
+    if (!spawned || this.child !== child) return false;
+    const initialized = await this.call("initialize", {
+      clientInfo: {
+        name: "codex-discord-presence",
+        title: "Codex Discord Presence",
+        version: "1.0.0",
+      },
+    });
+    if (!initialized || initialized.error !== undefined || this.child !== child) {
+      this.close();
+      return false;
+    }
+    try {
+      child.stdin.write(JSON.stringify({ method: "initialized", params: {} }) + "\n");
+      return true;
+    } catch {
+      this.close();
+      return false;
+    }
+  }
+
+  private call(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | undefined> {
+    const child = this.child;
+    if (!child) return Promise.resolve(undefined);
+    const id = this.nextId++;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        resolve(undefined);
+      }, REQUEST_TIMEOUT_MS);
+      this.pending.set(id, { resolve, timer });
       try {
-        child.stdin.write(JSON.stringify(initialize) + "\n");
+        child.stdin.write(JSON.stringify({ method, id, ...(params ? { params } : {}) }) + "\n");
       } catch {
-        finish({ ok: false });
+        clearTimeout(timer);
+        this.pending.delete(id);
+        resolve(undefined);
       }
     });
-  });
+  }
+
+  private handleExit(child: ChildProcessWithoutNullStreams): void {
+    if (this.child !== child) return;
+    this.child = undefined;
+    this.startPromise = undefined;
+    this.failPending();
+  }
+
+  private failPending(): void {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.resolve(undefined);
+    }
+    this.pending.clear();
+    this.buffer = "";
+  }
 }
+
+const createResetCreditsReader: ResetCreditsReaderFactory = (command) =>
+  new CodexAppServerReader(command);
 
 export class CodexResetCreditsWatcher {
   private timer?: ReturnType<typeof setInterval>;
@@ -245,10 +315,13 @@ export class CodexResetCreditsWatcher {
   private lastAvailable?: number;
   private lastLimitsKey?: string;
   private lastCommand?: CodexCommand;
+  private reader?: ResetCreditsReader;
 
   constructor(
     private readonly onUpdate: (available: number | undefined, limits: Limits | undefined) => void,
     private readonly intervalMs = DEFAULT_POLL_MS,
+    private readonly readerFactory: ResetCreditsReaderFactory = createResetCreditsReader,
+    private readonly commands: () => CodexCommand[] = codexAppServerCommands,
   ) {}
 
   start(): void {
@@ -262,18 +335,30 @@ export class CodexResetCreditsWatcher {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.reader?.close();
+    this.reader = undefined;
   }
 
   private async poll(): Promise<void> {
     if (this.stopped || this.polling) return;
     this.polling = true;
     try {
-      if (this.lastCommand && (await this.tryCommand(this.lastCommand))) return;
+      if (this.lastCommand && this.reader && (await this.tryReader(this.reader))) return;
+      if (this.stopped) return;
+      this.reader?.close();
+      this.reader = undefined;
       this.lastCommand = undefined;
-      for (const command of codexAppServerCommands()) {
-        if (await this.tryCommand(command)) {
+      for (const command of this.commands()) {
+        if (this.stopped) return;
+        const reader = this.readerFactory(command);
+        this.reader = reader;
+        if (await this.tryReader(reader)) {
           this.lastCommand = command;
           return;
+        }
+        if (this.reader === reader) {
+          reader.close();
+          this.reader = undefined;
         }
       }
       log.debug("Codex app-server rate-limit read failed");
@@ -282,9 +367,9 @@ export class CodexResetCreditsWatcher {
     }
   }
 
-  private async tryCommand(command: CodexCommand): Promise<boolean> {
-    const result = await requestResetCredits(command);
-    if (!result.ok) return false;
+  private async tryReader(reader: ResetCreditsReader): Promise<boolean> {
+    const result = await reader.read();
+    if (this.stopped || !result.ok) return false;
     const limitsKey = JSON.stringify({
       fiveHour: result.limits?.fiveHour,
       sevenDay: result.limits?.sevenDay,

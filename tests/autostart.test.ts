@@ -29,3 +29,8 @@ test("systemd configuration safely quotes paths and disables duplicate service o
   expect(unit).toContain('"--env-file=/Users/A & B/Codex %% Presence/.env"');
   expect(unit).toContain("StandardOutput=null\nStandardError=null");
 });
+
+test("systemd does not expand dollar signs inside executable paths", () => {
+  const unit = createSystemdUserUnit({ ...definition, nodePath: "/home/$user/bin/node" });
+  expect(unit).toContain('ExecStart="/home/$$user/bin/node"');
+});

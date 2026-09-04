@@ -16,6 +16,8 @@ function base(): PresenceState {
 }
 
 test("model display names", () => {
+  expect(codexModelDisplayName("gpt-6-astra")).toBe("GPT-6 Astra");
+  expect(codexModelDisplayName(" GPT-6-ASTRA-2026-09-03-fast ")).toBe("GPT-6 Astra");
   expect(codexModelDisplayName("gpt-5.5")).toBe("GPT-5.5");
   expect(codexModelDisplayName("gpt-5.4-mini")).toBe("GPT-5.4 Mini");
   expect(codexModelDisplayName("gpt-5-codex")).toBe("GPT-5 Codex");
@@ -58,27 +60,6 @@ test("monthly usage is shown when hovering the small statistics icon", () => {
   expect(activity.smallImageText).toBe(
     "Day\u00a0$12.3·20M\u00a0tok\nWeek\u00a0$80·100M\u00a0tok\nMonth\u00a0$410·641.6M\u00a0tok\nTotal\u00a0$1K·2B\u00a0tok",
   );
-});
-
-test("small statistics tooltip uses the compact Light-era labels", () => {
-  const state = base();
-  state.model = { id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol" };
-  state.effort = "low";
-  state.monthlyUsage = {
-    costUsd: 654.31,
-    totalTokens: 677_900_000,
-    day: { costUsd: 1.54, totalTokens: 1_000_000 },
-    week: { costUsd: 230.69, totalTokens: 275_400_000 },
-    allTime: { costUsd: 1_190, totalTokens: 1_100_000_000 },
-  };
-  const activity = buildCodexActivity(state, { ...assets, smallImageKey: "usage-stats" });
-  expect(activity.state).toBe("GPT-5.6 Sol (Light) • Editing config.ts");
-  expect(activity.smallImageText).toBe(
-    "Day\u00a0$1.54·1M\u00a0tok\nWeek\u00a0$231·275.4M\u00a0tok\nMonth\u00a0$654·677.9M\u00a0tok\nTotal\u00a0$1.19K·1.1B\u00a0tok",
-  );
-  expect(activity.smallImageText!.split("\n").every((line) => !line.includes(" "))).toBe(true);
-  expect(Math.max(...activity.smallImageText!.split("\n").map((line) => line.length))).toBeLessThanOrEqual(24);
-  expect(new TextEncoder().encode(activity.smallImageText!).length).toBeLessThanOrEqual(128);
 });
 
 test("details line shows independent available reset credits", () => {
@@ -170,6 +151,16 @@ test("omitting custom art lets Discord use the application icon", () => {
   expect(activity.largeImageText).toBeUndefined();
 });
 
+test("adds the configured repository button", () => {
+  const activity = buildCodexActivity(base(), {
+    appName: "Codex",
+    buttons: [{ label: "Get Codex Presence", url: "https://github.com/example/codex" }],
+  });
+  expect(activity.buttons).toEqual([
+    { label: "Get Codex Presence", url: "https://github.com/example/codex" },
+  ]);
+});
+
 test("hover shows tokens and context", () => {
   const state = base();
   state.usage = { input: 12378, output: 178, cacheRead: 5504, cacheWrite: 0 };
@@ -190,4 +181,25 @@ test("hover includes cost when present", () => {
 test("hover without usage falls back to app name", () => {
   const activity = buildCodexActivity(base(), assets);
   expect(activity.largeImageText).toBe("Codex");
+});
+
+test("small statistics tooltip uses the compact Light-era labels", () => {
+  const state = base();
+  state.model = { id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol" };
+  state.effort = "low";
+  state.monthlyUsage = {
+    costUsd: 654.31,
+    totalTokens: 677_900_000,
+    day: { costUsd: 1.54, totalTokens: 1_000_000 },
+    week: { costUsd: 230.69, totalTokens: 275_400_000 },
+    allTime: { costUsd: 1_190, totalTokens: 1_100_000_000 },
+  };
+  const activity = buildCodexActivity(state, { ...assets, smallImageKey: "usage-stats" });
+  expect(activity.state).toBe("GPT-5.6 Sol (Light) • Editing config.ts");
+  expect(activity.smallImageText).toBe(
+    "Day\u00a0$1.54·1M\u00a0tok\nWeek\u00a0$231·275.4M\u00a0tok\nMonth\u00a0$654·677.9M\u00a0tok\nTotal\u00a0$1.19K·1.1B\u00a0tok",
+  );
+  expect(activity.smallImageText!.split("\n").every((line) => !line.includes(" "))).toBe(true);
+  expect(Math.max(...activity.smallImageText!.split("\n").map((line) => line.length))).toBeLessThanOrEqual(24);
+  expect(new TextEncoder().encode(activity.smallImageText!).length).toBeLessThanOrEqual(128);
 });

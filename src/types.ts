@@ -1,4 +1,4 @@
-export type EffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+export type EffortLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 export type SessionStatus = "new" | "thinking" | "working" | "idle" | "waiting";
 

@@ -64,7 +64,7 @@ export function createSystemdUserUnit(definition: AutostartDefinition): string {
     "--enable-source-maps",
     definition.entryPoint,
   ]
-    .map(systemdQuote)
+    .map((argument) => systemdQuote(argument).replaceAll("$", () => "$$"))
     .join(" ");
   return `[Unit]
 Description=${definition.description}

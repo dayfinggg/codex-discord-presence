@@ -70,3 +70,12 @@ test("POSIX process parsing recognizes Codex CLI and Desktop executable paths", 
   expect(result).toEqual({ alive: true, earliestStartedAt: now - 60_000, pid: 202 });
   expect(processCommandName("/opt/Codex.exe")).toBe("Codex");
 });
+
+test("POSIX background app-server processes never keep Codex presence alive", () => {
+  const processes = "101 500 /usr/local/bin/codex\n202 60 /opt/codex\n";
+  const commands = '101 /usr/local/bin/codex app-server --listen stdio://\n202 /opt/codex exec "inspect app-server"\n';
+  expect(parsePosixProcessList(processes, /^codex$/i, 1_000_000, commands)).toEqual({
+    alive: true, earliestStartedAt: 940_000, pid: 202,
+  });
+  expect(parsePosixProcessList("101 05:00 /usr/local/bin/codex", /^codex$/i, 1_000_000, commands).alive).toBe(false);
+});

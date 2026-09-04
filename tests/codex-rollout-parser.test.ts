@@ -3,11 +3,11 @@ import { parseRolloutLine, sessionIdFromPath } from "../src/codex/rollout-parser
 
 test("session_meta for a user session", () => {
   const line =
-    '{"timestamp":"2025-01-02T03:04:05.000Z","type":"session_meta","payload":{"session_id":"user-session","id":"user-session","cwd":"C:\\\\Users\\\\example","originator":"codex-tui","source":"cli","thread_source":"user","model_provider":"openai"}}';
+    '{"timestamp":"2026-07-06T10:01:23.918Z","type":"session_meta","payload":{"session_id":"019f36df","id":"019f36df","cwd":"C:\\\\Users\\\\dayfing","originator":"codex-tui","source":"cli","thread_source":"user","model_provider":"openai"}}';
   const event = parseRolloutLine(line);
   expect(event).toEqual({
     kind: "session_meta",
-    cwd: "C:\\Users\\example",
+    cwd: "C:\\Users\\dayfing",
     source: "cli",
     isSubagent: false,
     parentThreadId: undefined,
@@ -17,12 +17,12 @@ test("session_meta for a user session", () => {
 
 test("session_meta for a subagent carries parent thread id", () => {
   const line =
-    '{"type":"session_meta","payload":{"id":"subagent-session","cwd":"D:\\\\example","source":{"subagent":{"thread_spawn":{"parent_thread_id":"PARENT-THREAD","depth":1,"agent_role":"explorer"}}},"thread_source":"subagent","agent_role":"explorer"}}';
+    '{"type":"session_meta","payload":{"id":"019f36e2","cwd":"D:\\\\x","source":{"subagent":{"thread_spawn":{"parent_thread_id":"019F36B6-AA62","depth":1,"agent_role":"explorer"}}},"thread_source":"subagent","agent_role":"explorer"}}';
   const event = parseRolloutLine(line);
   expect(event).toMatchObject({
     kind: "session_meta",
     isSubagent: true,
-    parentThreadId: "parent-thread",
+    parentThreadId: "019f36b6-aa62",
     agentRole: "explorer",
   });
 });
@@ -71,11 +71,11 @@ test("turn_context falls back to collaboration_mode settings effort", () => {
 
 test("token_count parses usage, context and rate limits", () => {
   const line =
-    '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12378,"cached_input_tokens":5504,"output_tokens":178,"reasoning_output_tokens":171,"total_tokens":12556},"last_token_usage":{"total_tokens":12556},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":2,"window_minutes":300,"resets_at":1783521774},"secondary":{"used_percent":9,"window_minutes":10080,"resets_at":1784000170},"plan_type":"pro"}}}';
+    '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12378,"cached_input_tokens":5504,"cache_write_input_tokens":1024,"output_tokens":178,"reasoning_output_tokens":171,"total_tokens":12556},"last_token_usage":{"total_tokens":12556},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":2,"window_minutes":300,"resets_at":1783521774},"secondary":{"used_percent":9,"window_minutes":10080,"resets_at":1784000170},"plan_type":"pro"}}}';
   const event = parseRolloutLine(line);
   expect(event).toEqual({
     kind: "token_count",
-    usage: { input: 12378, cachedInput: 5504, output: 178, reasoning: 171, total: 12556 },
+    usage: { input: 12378, cachedInput: 5504, cacheWriteInput: 1024, output: 178, reasoning: 171, total: 12556 },
     contextWindow: 258400,
     contextUsed: 12556,
     limits: {
@@ -100,7 +100,7 @@ test("function_call shell_command classifies its command", () => {
 
 test("custom_tool_call apply_patch extracts basename", () => {
   const line =
-    '{"type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","input":"*** Begin Patch\\n*** Update File: C:/Users/example/project/operating-policy.md\\n@@"}}';
+    '{"type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","input":"*** Begin Patch\\n*** Update File: C:/Users/dayfing/.claude/output-styles/operating-policy.md\\n@@"}}';
   expect(parseRolloutLine(line)).toEqual({ kind: "tool", name: "apply_patch", file: "operating-policy.md" });
 });
 
@@ -194,7 +194,7 @@ test("custom_tool_call exec uses the first wrapped call for parallel batches", (
 
 test("custom_tool_call exec with apply_patch extracts the escaped file name", () => {
   const line =
-    '{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const patch = \\"*** Begin Patch\\\\n*** Update File: C:\\\\\\\\Users\\\\\\\\example\\\\\\\\.codex\\\\\\\\model-instructions.md\\\\n+line\\\\n*** End Patch\\";\\nawait tools.apply_patch({input: patch});"}}';
+    '{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const patch = \\"*** Begin Patch\\\\n*** Update File: C:\\\\\\\\Users\\\\\\\\dayfing\\\\\\\\.codex\\\\\\\\model-instructions.md\\\\n+line\\\\n*** End Patch\\";\\nawait tools.apply_patch({input: patch});"}}';
   expect(parseRolloutLine(line)).toEqual({
     kind: "tool",
     name: "apply_patch",
@@ -220,7 +220,7 @@ test("workspace, plugin, agent-input and mcp-resource calls get their own tools"
   expect(parseRolloutLine(deps)).toEqual({ kind: "tool", name: "load_workspace_dependencies" });
 
   const input =
-    '{"type":"response_item","payload":{"type":"function_call","name":"send_input","arguments":"{\\"target\\":\\"agent-01\\",\\"message\\":\\"synthetic message\\"}"}}';
+    '{"type":"response_item","payload":{"type":"function_call","name":"send_input","arguments":"{\\"target\\":\\"019f\\",\\"message\\":\\"hi\\"}"}}';
   expect(parseRolloutLine(input)).toEqual({ kind: "tool", name: "message_agent" });
 
   const plugin =
@@ -300,7 +300,7 @@ test("thread_settings_applied carries the new model, effort and service tier", (
 
 test("patch_apply_end extracts basename from changes", () => {
   const line =
-    '{"type":"event_msg","payload":{"type":"patch_apply_end","changes":{"C:\\\\Users\\\\example\\\\project\\\\settings.json":{"type":"update"}}}}';
+    '{"type":"event_msg","payload":{"type":"patch_apply_end","changes":{"C:\\\\Users\\\\dayfing\\\\.claude\\\\settings.json":{"type":"update"}}}}';
   expect(parseRolloutLine(line)).toEqual({ kind: "tool", name: "apply_patch", file: "settings.json" });
 });
 
@@ -308,8 +308,8 @@ test("spawn and close agents", () => {
   const spawn = '{"type":"response_item","payload":{"type":"function_call","name":"spawn_agent","arguments":"{}"}}';
   expect(parseRolloutLine(spawn)).toEqual({ kind: "tool", name: "spawn_agent" });
   const close =
-    '{"type":"response_item","payload":{"type":"function_call","name":"close_agent","arguments":"{\\"target\\":\\"agent-02\\"}"}}';
-  expect(parseRolloutLine(close)).toEqual({ kind: "agent_close", targets: ["agent-02"] });
+    '{"type":"response_item","payload":{"type":"function_call","name":"close_agent","arguments":"{\\"target\\":\\"019F3EEC\\"}"}}';
+  expect(parseRolloutLine(close)).toEqual({ kind: "agent_close", targets: ["019F3EEC"] });
 });
 
 test("request_user_input becomes its own event", () => {
@@ -334,7 +334,7 @@ test("unknown and malformed lines are ignored", () => {
 
 test("sessionIdFromPath pulls uuid from rollout filename", () => {
   const path =
-    "C:/Users/example/.codex/sessions/2025/01/02/rollout-2025-01-02T03-04-05-55555555-5555-4555-8555-555555555555.jsonl";
-  expect(sessionIdFromPath(path)).toBe("55555555-5555-4555-8555-555555555555");
+    "C:/Users/dayfing/.codex/sessions/2026/07/08/rollout-2026-07-08T13-32-11-019f4149-017d-77f1-a9c4-af58b4cc558d.jsonl";
+  expect(sessionIdFromPath(path)).toBe("019f4149-017d-77f1-a9c4-af58b4cc558d");
   expect(sessionIdFromPath("nope.jsonl")).toBeUndefined();
 });

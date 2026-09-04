@@ -66,13 +66,21 @@ export function parsePosixProcessList(
   raw: string,
   pattern: RegExp,
   now = Date.now(),
+  commandLines = "",
 ): { alive: boolean; earliestStartedAt?: number; pid?: number } {
+  const helpers = new Set<number>();
+  for (const line of commandLines.split("\n")) {
+    const match = line.trim().match(/^(\d+)\s+(.+)$/);
+    if (match && /^(?:"[^"]+"|'[^']+'|\S+)\s+app-server(?:\s|$)/.test(match[2]!)) {
+      helpers.add(Number(match[1]));
+    }
+  }
   let alive = false;
   let earliestStartedAt: number | undefined;
   let pid: number | undefined;
   for (const line of raw.split("\n")) {
     const match = line.trim().match(/^(\d+)\s+(\S+)\s+(.+)$/);
-    if (!match || !regexMatches(pattern, processCommandName(match[3]!))) continue;
+    if (!match || helpers.has(Number(match[1])) || !regexMatches(pattern, processCommandName(match[3]!))) continue;
     const elapsedSeconds = parseElapsedTimeSeconds(match[2]!);
     if (elapsedSeconds === undefined) continue;
     alive = true;
@@ -215,17 +223,12 @@ export class ProcessLiveness {
     }
 
     const elapsedColumn = process.platform === "darwin" ? "etime=" : "etimes=";
-    const withStart = await this.run(["ps", "-A", "-o", `pid=,${elapsedColumn},comm=`]);
-    if (withStart !== undefined) {
-      return parsePosixProcessList(withStart, this.pattern);
-    }
-
-    const namesOnly = await this.run(["ps", "-A", "-o", "comm="]);
-    if (namesOnly === undefined) return undefined;
-    const alive = namesOnly
-      .split("\n")
-      .some((line) => regexMatches(this.pattern, processCommandName(line)));
-    return { alive };
+    const [withStart, commandLines] = await Promise.all([
+      this.run(["ps", "-A", "-o", `pid=,${elapsedColumn},comm=`]),
+      this.run(["ps", "-A", "-o", "pid=,args="]),
+    ]);
+    if (withStart === undefined || commandLines === undefined) return undefined;
+    return parsePosixProcessList(withStart, this.pattern, Date.now(), commandLines);
   }
 
   private async scan(): Promise<void> {
@@ -233,7 +236,7 @@ export class ProcessLiveness {
     this.scanning = true;
     try {
       const result = await this.matches();
-      if (result === undefined) return;
+      if (this.stopped || result === undefined) return;
       if (result.alive) {
         this.deadStreak = 0;
       } else {

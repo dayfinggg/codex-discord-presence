@@ -91,3 +91,9 @@ test("remote watcher protocol accepts compact monthly usage", () => {
     parseRemoteWatcherMessage('{"M":"claude","T":1,"U":{"model":{"i":1}}}'),
   ).toBeUndefined();
 });
+
+test("remote protocol ignores JSON primitives and arrays", () => {
+  for (const line of ["null", "true", "12", "[]", "\"text\""]) {
+    expect(parseRemoteWatcherMessage(line)).toBeUndefined();
+  }
+});

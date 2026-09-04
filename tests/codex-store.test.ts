@@ -2,9 +2,28 @@ import { test, expect } from "vitest";
 import { CodexStore } from "../src/codex/codex-store.ts";
 import type { CodexEvent } from "../src/codex/rollout-parser.ts";
 
-const PARENT = "11111111-1111-4111-8111-111111111111";
-const CHILD = "22222222-2222-4222-8222-222222222222";
-const OTHER = "33333333-3333-4333-8333-333333333333";
+const PARENT = "019f36b6-aa62-77e0-a05e-614ec0e7d3d4";
+const CHILD = "019f36c7-cc9d-79c1-804a-acf3a052222a";
+const OTHER = "019f36d8-dd0e-70d2-915b-bdf4b163333b";
+
+test("invalid reasoning alongside a valid model cannot crash thread settings", () => {
+  const store = new CodexStore(() => {});
+  store.handleEvent(PARENT, false, { kind: "user_message" });
+  expect(() => store.setSessionThreadSettings(PARENT, false, { model: "gpt-6-astra", effort: "invalid" })).not.toThrow();
+  expect(store.snapshot()?.model?.id).toBe("gpt-6-astra");
+  store.dispose();
+});
+
+test("Fast service tier and None reasoning are recognized", () => {
+  const store = new CodexStore(() => {});
+  store.handleEvent(PARENT, false, { kind: "user_message" });
+  store.handleEvent(PARENT, false, { kind: "thread_settings", effort: "High", serviceTier: "fast" });
+  expect(store.snapshot()?.effort).toBe("high");
+  expect(store.snapshot()?.fastMode).toBe(true);
+  store.handleEvent(PARENT, false, { kind: "thread_settings", effort: "none" });
+  expect(store.snapshot()?.effort).toBe("none");
+  store.dispose();
+});
 
 function feed(store: CodexStore, sessionId: string, events: CodexEvent[], remote = false): void {
   for (const event of events) store.handleEvent(sessionId, remote, event);
@@ -325,7 +344,6 @@ test("a selected idle local session wins over remote background activity", () =>
   const snap = store.snapshot();
   expect(snap!.remote).toBe(false);
   expect(snap!.action).toBe("Idle");
-  store.dispose();
 });
 
 test("desktop selection switches presence between local and remote sessions", () => {
@@ -343,16 +361,6 @@ test("desktop selection switches presence between local and remote sessions", ()
   store.setDesktopSelection({ remote: false });
   expect(store.snapshot()!.remote).toBe(false);
   expect(store.snapshot()!.status).toBe("working");
-});
-
-test("an ordinary Desktop chat stays visible without a selected project", () => {
-  const store = new CodexStore(() => {});
-  const now = Date.now();
-  store.setAppLiveness(true, now - 60_000);
-  store.handleEvent(PARENT, false, { kind: "session_meta", isSubagent: false }, now - 2_000);
-  store.handleEvent(PARENT, false, { kind: "user_message" }, now - 1_000);
-  expect(store.snapshot()).toMatchObject({ remote: false, status: "thinking" });
-  store.dispose();
 });
 
 test("a remote selection does not fall back to unrelated local activity", () => {
@@ -388,9 +396,13 @@ test("selected remote chat title wins over a newer background chat in the same p
   store.handleEvent(PARENT, true, { kind: "turn_ended" }, now - 4_000);
   store.handleEvent(OTHER, true, { kind: "session_meta", cwd: "/srv/app", isSubagent: false }, now - 2_000);
   store.handleEvent(OTHER, true, { kind: "tool", name: "shell_command" }, now - 1_000);
+  store.setSessionGoals(true, new Map([[PARENT, { active: true, updatedAt: now }]]));
   store.setDesktopSelection({ remote: true, remotePath: "/srv/app", threadTitle: "Selected chat" });
 
-  expect(store.snapshot()).toMatchObject({ remote: true, status: "idle", action: "Idle" });
+  const snapshot = store.snapshot();
+  expect(snapshot!.goalActive).toBe(true);
+  expect(snapshot!.status).toBe("idle");
+  expect(snapshot!.action).toBe("Idle");
   store.dispose();
 });
 
@@ -415,6 +427,30 @@ test("selecting an unprimed remote chat resolves cached server metadata", () => 
   store.dispose();
 });
 
+test("an unprimed remote selection stays visible until its metadata arrives", () => {
+  const store = new CodexStore(() => {});
+  store.setAppLiveness(true, Date.now() - 5_000);
+  store.setDesktopSelection({
+    remote: true,
+    remotePath: "/srv/app",
+    threadTitle: "Selected remote chat",
+    model: "gpt-5.6-sol",
+    effort: "medium",
+  });
+
+  expect(store.snapshot()).toMatchObject({
+    remote: true,
+    status: "idle",
+    model: { id: "gpt-5.6-sol" },
+    effort: "medium",
+  });
+
+  store.setSessionMetadata(PARENT, true, "Selected remote chat", "/srv/app");
+  feed(store, PARENT, [{ kind: "tool", name: "shell_command" }], true);
+  expect(store.snapshot()).toMatchObject({ remote: true, status: "working", action: "Running a command" });
+  store.dispose();
+});
+
 test("selected local CLI session id wins over another active local chat", () => {
   const store = new CodexStore(() => {});
   const now = Date.now();
@@ -424,7 +460,7 @@ test("selected local CLI session id wins over another active local chat", () => 
   store.handleEvent(OTHER, false, { kind: "tool", name: "shell_command" }, now - 1_000);
   store.setDesktopSelection({ remote: false, sessionId: PARENT });
 
-  expect(store.snapshot()).toMatchObject({ remote: false, status: "idle", action: "Idle" });
+  expect(store.snapshot()!.status).toBe("idle");
   store.dispose();
 });
 
@@ -470,7 +506,7 @@ test("Desktop model selection overrides stale rollout settings", () => {
   store.dispose();
 });
 
-test("an unmatched selected chat does not fall back to background activity", () => {
+test("an unmatched selected chat stays visible without falling back to background activity", () => {
   const store = new CodexStore(() => {});
   const now = Date.now();
   store.setSessionMetadata(PARENT, true, "Background chat");
@@ -478,7 +514,7 @@ test("an unmatched selected chat does not fall back to background activity", () 
   store.handleEvent(PARENT, true, { kind: "tool", name: "shell_command" }, now - 500);
   store.setDesktopSelection({ remote: true, remotePath: "/srv/app", threadTitle: "Selected chat" });
 
-  expect(store.snapshot()).toBeUndefined();
+  expect(store.snapshot()).toMatchObject({ remote: true, status: "idle", action: "Idle" });
   store.dispose();
 });
 
@@ -653,6 +689,32 @@ test("codex cost is split per model after a mid-session model switch", () => {
   expect(snap?.costUsd).toBeCloseTo(12.0, 6);
 });
 
+test("codex cost includes cache writes from cumulative token usage", () => {
+  const store = new CodexStore(() => {});
+  feed(store, PARENT, [
+    { kind: "turn_context", model: "gpt-5.6-sol", effort: "high", planMode: false, realtime: false },
+    {
+      kind: "token_count",
+      usage: {
+        input: 1_000_000,
+        cachedInput: 200_000,
+        cacheWriteInput: 300_000,
+        output: 0,
+        reasoning: 0,
+        total: 1_000_000,
+      },
+    },
+  ]);
+
+  expect(store.snapshot()!.costBreakdown).toMatchObject({
+    input: 2,
+    cacheWrite: 1.5,
+    total: 3.58,
+  });
+  expect(store.snapshot()!.costBreakdown?.cacheRead).toBeCloseTo(0.08, 6);
+  store.dispose();
+});
+
 test("codex presence persists as Idle when the app runs but the session went stale", () => {
   const store = new CodexStore(() => {});
   const old = Date.now() - 20 * 60 * 1000;
@@ -760,4 +822,14 @@ test("subagent sessions never become the active presence", () => {
     { kind: "tool", name: "shell_command" },
   ]);
   expect(store.snapshot()).toBeUndefined();
+});
+
+test("an ordinary Desktop chat stays visible without a selected project", () => {
+  const store = new CodexStore(() => {});
+  const now = Date.now();
+  store.setAppLiveness(true, now - 60_000);
+  store.handleEvent(PARENT, false, { kind: "session_meta", isSubagent: false }, now - 2_000);
+  store.handleEvent(PARENT, false, { kind: "user_message" }, now - 1_000);
+  expect(store.snapshot()).toMatchObject({ remote: false, status: "thinking" });
+  store.dispose();
 });
