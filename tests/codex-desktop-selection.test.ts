@@ -26,7 +26,7 @@ test("watcher follows generated names, settings changes, and delayed database di
   try {
     database.exec("CREATE TABLE threads (id TEXT, title TEXT, name TEXT, cwd TEXT, archived INTEGER, recency_at_ms INTEGER, updated_at_ms INTEGER)");
     database.exec("INSERT INTO threads VALUES ('first', 'An unrelated original prompt', 'Selected chat', 'D:/work', 0, 1, 1)");
-    writeFileSync(join(home, ".codex-global-state.json"), "{}");
+    writeFileSync(join(home, ".codex-global-state.json"), JSON.stringify({ "active-workspace-roots": ["D:/stale-project"] }));
     watcher.setUiSelection({ kind: "desktop", title: "Selected chat", model: "gpt-6-astra", effort: "high" });
     watcher.start();
     await waitFor(() => updates.at(-1)?.sessionId === "first");
