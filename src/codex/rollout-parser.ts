@@ -3,6 +3,7 @@ import { classifyShellCommand } from "./shell-action.ts";
 export interface CodexUsage {
   input: number;
   cachedInput: number;
+  cacheWriteInput?: number;
   output: number;
   reasoning: number;
   total: number;
@@ -335,6 +336,7 @@ function parseEventMsg(payload: Record<string, unknown>): CodexEvent | undefined
       const usage: CodexUsage = {
         input: num(total.input_tokens),
         cachedInput: num(total.cached_input_tokens),
+        cacheWriteInput: num(total.cache_write_input_tokens),
         output: num(total.output_tokens),
         reasoning: num(total.reasoning_output_tokens),
         total: num(total.total_tokens),

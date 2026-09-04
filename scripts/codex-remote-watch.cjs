@@ -52,9 +52,9 @@ function emitServiceTier(sessionId, serviceTier) {
   }
 }
 
-function emitThreadMetadata(sessionId, title, cwd) {
+function emitThreadMetadata(sessionId, title, name, cwd) {
   try {
-    process.stdout.write(JSON.stringify({ s: sessionId, n: title, c: cwd }) + "\n");
+    process.stdout.write(JSON.stringify({ s: sessionId, n: title, N: name, c: cwd }) + "\n");
   } catch (e) {
     process.exit(0);
   }
@@ -65,19 +65,24 @@ function scanThreadMetadata() {
   try {
     if (!threadDatabase) {
       threadDatabase = new DatabaseSync(path.join(HOME, "state_5.sqlite"), { readOnly: true });
+      const hasName = threadDatabase.prepare("PRAGMA table_info(threads)").all()
+        .some((column) => column?.name === "name");
       threadStatement = threadDatabase.prepare(
-        "SELECT id, title, cwd FROM threads WHERE archived = 0 AND title <> '' ORDER BY recency_at_ms DESC LIMIT 2000",
+        hasName
+          ? "SELECT id, title, name, cwd FROM threads WHERE archived = 0 AND (title <> '' OR name <> '') ORDER BY recency_at_ms DESC LIMIT 2000"
+          : "SELECT id, title, '' AS name, cwd FROM threads WHERE archived = 0 AND title <> '' ORDER BY recency_at_ms DESC LIMIT 2000",
       );
     }
     for (const row of threadStatement.all()) {
       const sessionId = typeof row?.id === "string" ? row.id.toLowerCase() : "";
       const title = typeof row?.title === "string" ? row.title.trim() : "";
+      const name = typeof row?.name === "string" ? row.name.trim() : "";
       const cwd = typeof row?.cwd === "string" ? row.cwd.trim() : "";
       if (!SESSION_ID.test(sessionId)) continue;
-      const metadataKey = `${title}\0${cwd}`;
-      if (!title || lastThreadMetadata.get(sessionId) === metadataKey) continue;
+      const metadataKey = `${title}\0${name}\0${cwd}`;
+      if ((!title && !name) || lastThreadMetadata.get(sessionId) === metadataKey) continue;
       lastThreadMetadata.set(sessionId, metadataKey);
-      emitThreadMetadata(sessionId, title, cwd);
+      emitThreadMetadata(sessionId, title, name, cwd);
     }
   } catch (e) {
     try {
@@ -149,16 +154,28 @@ function usageRecord(value) {
   if (!usage) return undefined;
   const input = positiveCount(usage.input_tokens ?? usage.prompt_tokens);
   const cachedInput = Math.min(input, positiveCount(usage.cached_input_tokens ?? usage.cached_tokens));
+  const cacheWriteInput = Math.min(
+    Math.max(0, input - cachedInput),
+    positiveCount(usage.cache_write_input_tokens ?? usage.cache_write_tokens),
+  );
   const output = positiveCount(usage.output_tokens ?? usage.completion_tokens);
   const reasoning = positiveCount(usage.reasoning_output_tokens);
   const total = positiveCount(usage.total_tokens) || input + output;
-  return { input, cachedInput, output, reasoning, total };
+  return { input, cachedInput, cacheWriteInput, output, reasoning, total };
 }
 
 function usageDelta(current, previous) {
+  if (previous && (
+    current.input < previous.input ||
+    current.cachedInput < previous.cachedInput ||
+    current.cacheWriteInput < previous.cacheWriteInput ||
+    current.output < previous.output ||
+    current.total < previous.total
+  )) return current;
   return {
     input: Math.max(0, current.input - (previous?.input || 0)),
     cachedInput: Math.max(0, current.cachedInput - (previous?.cachedInput || 0)),
+    cacheWriteInput: Math.max(0, current.cacheWriteInput - (previous?.cacheWriteInput || 0)),
     output: Math.max(0, current.output - (previous?.output || 0)),
     reasoning: Math.max(0, current.reasoning - (previous?.reasoning || 0)),
     total: Math.max(0, current.total - (previous?.total || 0)),
@@ -295,10 +312,10 @@ function codexMonthlyUsage() {
           skipReplay = false;
         }
         const last = usageRecord(info?.last_token_usage);
-        const usage = last || (total ? usageDelta(total, previousTotals) : undefined);
+        const usage = total ? usageDelta(total, previousTotals) : last;
         if (total) previousTotals = total;
         if (!usage || !at) continue;
-        if (usage.input === 0 && usage.cachedInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
+        if (usage.input === 0 && usage.cachedInput === 0 && usage.cacheWriteInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
         events.push({ at, model: modelFrom(payload) || modelFrom(info) || currentModel || "gpt-5", ...usage });
         continue;
       }
@@ -313,7 +330,7 @@ function codexMonthlyUsage() {
       const usage = usageRecord(entry.usage);
       const at = timestamp(entry.timestamp ?? entry.created_at ?? entry.createdAt ?? value.timestamp);
       if (!usage || !at) continue;
-      if (usage.input === 0 && usage.cachedInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
+      if (usage.input === 0 && usage.cachedInput === 0 && usage.cacheWriteInput === 0 && usage.output === 0 && usage.reasoning === 0) continue;
       events.push({ at, model: modelFrom(entry) || modelFrom(value) || currentModel || "gpt-5", ...usage });
     }
   }
@@ -321,7 +338,7 @@ function codexMonthlyUsage() {
   const seen = new Set();
   const unique = [];
   for (const event of events) {
-    const key = [event.at, event.model, event.input, event.cachedInput, event.output, event.reasoning, event.total].join("|");
+    const key = [event.at, event.model, event.input, event.cachedInput, event.cacheWriteInput, event.output, event.reasoning, event.total].join("|");
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(event);
@@ -334,7 +351,7 @@ function codexMonthlyUsage() {
         input: event.input,
         output: event.output,
         cacheRead: event.cachedInput,
-        cacheWrite: 0,
+        cacheWrite: event.cacheWriteInput,
       });
       totalTokens += event.total || event.input + event.output;
     }

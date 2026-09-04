@@ -244,7 +244,7 @@ export class CodexServiceTierWatcher {
     this.polling = true;
     try {
       const tier = serviceTierFromConfig(await readFile(join(this.codexHome, "config.toml"), "utf8"));
-      const fastMode = tier === "priority";
+      const fastMode = tier === "priority" || tier === "fast";
       if (fastMode === this.lastFastMode) return;
       this.lastFastMode = fastMode;
       log.debug(`fast=${fastMode ? "yes" : "no"}`);

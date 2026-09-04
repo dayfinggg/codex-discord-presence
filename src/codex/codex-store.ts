@@ -23,6 +23,7 @@ const FIVE_HOUR_MINUTES = 5 * 60;
 const SEVEN_DAY_MINUTES = 7 * 24 * 60;
 const WINDOW_TOLERANCE_MINUTES = 5;
 const EFFORT_LEVELS: ReadonlySet<string> = new Set([
+  "none",
   "minimal",
   "low",
   "medium",
@@ -31,6 +32,7 @@ const EFFORT_LEVELS: ReadonlySet<string> = new Set([
   "max",
   "ultra",
 ]);
+const SELECTION_PLACEHOLDER_PREFIX = "selected:";
 
 interface CodexSession {
   sessionId: string;
@@ -65,7 +67,8 @@ interface TimedThreadSettings {
 }
 
 function effortOf(raw: string | undefined): EffortLevel | undefined {
-  return raw !== undefined && EFFORT_LEVELS.has(raw) ? (raw as EffortLevel) : undefined;
+  const value = raw?.trim().toLowerCase().replace(/^extra[\s_-]+high$/, "xhigh");
+  return value !== undefined && EFFORT_LEVELS.has(value) ? (value as EffortLevel) : undefined;
 }
 
 function statusRank(status: SessionStatus): number {
@@ -126,7 +129,8 @@ function toMs(seconds: number | undefined): number | undefined {
 }
 
 function normalizePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const path = value.trim().replace(/^\\\\\?\\/, "").replaceAll("\\", "/").replace(/\/+$/, "");
+  return /^[a-z]:\//i.test(path) || path.startsWith("//") ? path.toLowerCase() : path;
 }
 
 function goalStateEquals(a: GoalState, b: GoalState | undefined): boolean {
@@ -228,7 +232,7 @@ export class CodexStore {
   }
 
   private applyServiceTier(session: CodexSession, serviceTier: string | null): void {
-    session.fastMode = serviceTier === null ? undefined : serviceTier === "priority";
+    session.fastMode = serviceTier === null ? undefined : serviceTier === "priority" || serviceTier === "fast";
   }
 
   private applyModel(session: CodexSession, model: string, updatedAt: number): boolean {
@@ -332,7 +336,7 @@ export class CodexStore {
           input: event.usage.input,
           output: event.usage.output,
           cacheRead: event.usage.cachedInput,
-          cacheWrite: 0,
+          cacheWrite: event.usage.cacheWriteInput ?? 0,
         };
         const prev = session.usage;
         const reset = prev !== undefined && (cumulative.input < prev.input || cumulative.output < prev.output);
@@ -342,7 +346,7 @@ export class CodexStore {
                 input: Math.max(0, cumulative.input - prev.input),
                 output: Math.max(0, cumulative.output - prev.output),
                 cacheRead: Math.max(0, cumulative.cacheRead - prev.cacheRead),
-                cacheWrite: 0,
+                cacheWrite: Math.max(0, cumulative.cacheWrite - prev.cacheWrite),
               }
             : cumulative;
         if (reset) session.usageByModel = {};
@@ -351,6 +355,7 @@ export class CodexStore {
         bucket.input += delta.input;
         bucket.output += delta.output;
         bucket.cacheRead += delta.cacheRead;
+        bucket.cacheWrite += delta.cacheWrite;
         session.usage = cumulative;
         if (event.contextWindow) session.contextWindow = event.contextWindow;
         if (event.contextUsed !== undefined) session.contextUsed = event.contextUsed;
@@ -451,6 +456,16 @@ export class CodexStore {
     ) return;
     this.sessionTitles.set(key, normalizedTitle);
     if (normalizedCwd) this.sessionCwds.set(key, normalizedCwd);
+    const selection = this.desktopSelection;
+    if (
+      selection?.remote === remote &&
+      selection.threadTitle &&
+      (!selection.sessionId || selection.sessionId.startsWith(SELECTION_PLACEHOLDER_PREFIX)) &&
+      this.metadataMatchesSelection(selection, normalizedTitle, normalizedCwd)
+    ) {
+      this.desktopSelection = { ...selection, sessionId: normalizedId };
+      this.prepareSelectedSession(this.desktopSelection);
+    }
     const session = this.sessions.get(normalizedId);
     if (session?.remote === remote) {
       session.title = normalizedTitle;
@@ -492,7 +507,9 @@ export class CodexStore {
     const session = this.sessions.get(normalizedId);
     if (!session || session.remote !== remote) return;
     if (model) this.applyModel(session, model, updatedAt);
-    if (settings.effort !== undefined) this.applyEffort(session, current.effort!.value, updatedAt);
+    if (settings.effort !== undefined && current.effort) {
+      this.applyEffort(session, current.effort.value, current.effort.updatedAt);
+    }
     if (updatedAt > session.lastActivity) session.lastActivity = updatedAt;
     if (updatedAt > session.lastInteractionAt) session.lastInteractionAt = updatedAt;
     this.cleared = false;
@@ -525,24 +542,20 @@ export class CodexStore {
 
   setDesktopSelection(selection: CodexDesktopSelection): void {
     if (selection.remote && !selection.sessionId && selection.threadTitle) {
-      const selectedTitle = selection.threadTitle.trim().toLocaleLowerCase();
-      const selectedRoot = selection.remotePath ? normalizePath(selection.remotePath) : undefined;
       for (const [key, title] of this.sessionTitles) {
         if (!key.startsWith("remote:")) continue;
-        const candidateTitle = title.trim().toLocaleLowerCase();
-        if (
-          candidateTitle !== selectedTitle &&
-          !candidateTitle.startsWith(selectedTitle) &&
-          !selectedTitle.startsWith(candidateTitle)
-        ) continue;
         const cwd = this.sessionCwds.get(key);
-        if (selectedRoot && cwd) {
-          const normalizedCwd = normalizePath(cwd);
-          if (normalizedCwd !== selectedRoot && !normalizedCwd.startsWith(`${selectedRoot}/`)) continue;
-        }
+        if (!this.metadataMatchesSelection(selection, title, cwd)) continue;
         selection = { ...selection, sessionId: key.slice("remote:".length) };
         break;
       }
+    }
+    if (!selection.sessionId && selection.threadTitle) {
+      const scope = selection.remote ? normalizePath(selection.remotePath ?? "remote") : "local";
+      selection = {
+        ...selection,
+        sessionId: `${SELECTION_PLACEHOLDER_PREFIX}${selection.remote ? "remote" : "local"}:${scope}:${selection.threadTitle.trim().toLocaleLowerCase()}`,
+      };
     }
     const current = this.desktopSelection;
     if (
@@ -554,20 +567,42 @@ export class CodexStore {
       current.effort === selection.effort
     ) return;
     this.desktopSelection = selection;
-    if (selection.sessionId) {
-      const normalizedId = selection.sessionId.toLowerCase();
-      const existed = this.sessions.has(normalizedId);
-      const session = this.ensure(normalizedId, selection.remote, Date.now());
-      if (!existed) {
-        session.status = "idle";
-        session.action = "Idle";
-      }
-      if (selection.threadTitle) session.title = selection.threadTitle;
-      if (selection.model) this.applyModel(session, selection.model, Date.now());
-      if (selection.effort) this.applyEffort(session, effortOf(selection.effort), Date.now());
-    }
+    this.prepareSelectedSession(selection);
     this.cleared = false;
     this.onChange();
+  }
+
+  private prepareSelectedSession(selection: CodexDesktopSelection): void {
+    if (!selection.sessionId) return;
+    const normalizedId = selection.sessionId.toLowerCase();
+    const existed = this.sessions.has(normalizedId);
+    const session = this.ensure(normalizedId, selection.remote, Date.now());
+    if (!existed) {
+      session.status = "idle";
+      session.action = "Idle";
+    }
+    if (selection.threadTitle) session.title = selection.threadTitle;
+    if (selection.model) this.applyModel(session, selection.model, Date.now());
+    if (selection.effort) this.applyEffort(session, effortOf(selection.effort), Date.now());
+  }
+
+  private metadataMatchesSelection(
+    selection: CodexDesktopSelection,
+    title: string,
+    cwd?: string,
+  ): boolean {
+    if (!selection.threadTitle) return false;
+    const selectedTitle = selection.threadTitle.trim().toLocaleLowerCase();
+    const candidateTitle = title.trim().toLocaleLowerCase();
+    if (
+      candidateTitle !== selectedTitle &&
+      !candidateTitle.startsWith(selectedTitle) &&
+      !selectedTitle.startsWith(candidateTitle)
+    ) return false;
+    if (!selection.remotePath || !cwd) return true;
+    const selectedRoot = normalizePath(selection.remotePath);
+    const normalizedCwd = normalizePath(cwd);
+    return normalizedCwd === selectedRoot || normalizedCwd.startsWith(`${selectedRoot}/`);
   }
 
   private hidden(session: CodexSession, now: number): boolean {
@@ -697,7 +732,7 @@ export class CodexStore {
       this.activeSince = Math.min(active.startTimestamp, now);
     }
 
-    const status: SessionStatus = stale ? "idle" : active.status;
+    const status = stale ? "idle" : active.status;
     const state: PresenceState = {
       planName: this.planOverride ?? this.planName ?? "",
       action: actionForStatus(status, active.action),
@@ -735,10 +770,11 @@ export class CodexStore {
     if (active.usage) {
       state.usage = active.usage;
       const models = Object.keys(active.usageByModel);
-      const breakdown: { input: number; output: number; cacheRead: number; total: number } = {
+      const breakdown: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } = {
         input: 0,
         output: 0,
         cacheRead: 0,
+        cacheWrite: 0,
         total: 0,
       };
       if (models.length > 0) {
@@ -747,22 +783,26 @@ export class CodexStore {
           const cost = codexCost(model === "" ? undefined : model, {
             input: usage.input,
             cachedInput: usage.cacheRead,
+            cacheWriteInput: usage.cacheWrite,
             output: usage.output,
           });
           breakdown.input += cost.input;
           breakdown.output += cost.output;
           breakdown.cacheRead += cost.cached;
+          breakdown.cacheWrite += cost.cacheWrite;
           breakdown.total += cost.total;
         }
       } else {
         const cost = codexCost(active.model?.id, {
           input: active.usage.input,
           cachedInput: active.usage.cacheRead,
+          cacheWriteInput: active.usage.cacheWrite,
           output: active.usage.output,
         });
         breakdown.input = cost.input;
         breakdown.output = cost.output;
         breakdown.cacheRead = cost.cached;
+        breakdown.cacheWrite = cost.cacheWrite;
         breakdown.total = cost.total;
       }
       state.costUsd = breakdown.total;
@@ -770,7 +810,7 @@ export class CodexStore {
         input: breakdown.input,
         output: breakdown.output,
         cacheRead: breakdown.cacheRead,
-        cacheWrite: 0,
+        cacheWrite: breakdown.cacheWrite,
         total: breakdown.total,
       };
     }

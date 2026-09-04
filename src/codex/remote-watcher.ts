@@ -75,6 +75,7 @@ export function parseRemoteWatcherMessage(line: string): RemoteWatcherMessage | 
     l?: unknown;
     s?: unknown;
     n?: unknown;
+    N?: unknown;
     c?: unknown;
     t?: unknown;
     G?: unknown;
@@ -86,7 +87,9 @@ export function parseRemoteWatcherMessage(line: string): RemoteWatcherMessage | 
     A?: unknown;
   };
   try {
-    record = JSON.parse(trimmed) as typeof record;
+    const parsed: unknown = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    record = parsed as typeof record;
   } catch {
     return undefined;
   }
@@ -127,12 +130,17 @@ export function parseRemoteWatcherMessage(line: string): RemoteWatcherMessage | 
     return { kind: "goals", states };
   }
   if (typeof record.s === "string" && SESSION_ID.test(record.s)) {
-    if (typeof record.n === "string" && record.n.trim() !== "") {
+    const title = typeof record.N === "string" && record.N.trim() !== ""
+      ? record.N.trim()
+      : typeof record.n === "string" && record.n.trim() !== ""
+        ? record.n.trim()
+        : undefined;
+    if (title) {
       const cwd = typeof record.c === "string" && record.c.trim() !== "" ? record.c.trim() : undefined;
       return {
         kind: "thread_metadata",
         sessionId: record.s.toLowerCase(),
-        title: record.n.trim(),
+        title,
         ...(cwd ? { cwd } : {}),
       };
     }

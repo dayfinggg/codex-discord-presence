@@ -13,6 +13,12 @@ export interface Activity {
   smallImageText?: string;
   startTimestamp?: number;
   endTimestamp?: number;
+  buttons?: ActivityButton[];
+}
+
+export interface ActivityButton {
+  label: string;
+  url: string;
 }
 
 export interface ActivityAssets {
@@ -21,6 +27,7 @@ export interface ActivityAssets {
   largeImageUrl?: string;
   smallImageKey?: string;
   smallImageUrl?: string;
+  buttons?: ActivityButton[];
 }
 
 export interface DetailsOptions {
@@ -33,6 +40,7 @@ const MAX = 128;
 const SEP = " • ";
 
 const EFFORT_LABELS: Record<EffortLevel, string> = {
+  none: "None",
   minimal: "Minimal",
   low: "Light",
   medium: "Medium",
@@ -224,6 +232,7 @@ export function activityEquals(a: Activity | undefined, b: Activity | undefined)
   if (a === b) return true;
   if (!a || !b) return false;
   return (
+    a.type === b.type &&
     a.name === b.name &&
     a.details === b.details &&
     a.state === b.state &&
@@ -234,6 +243,7 @@ export function activityEquals(a: Activity | undefined, b: Activity | undefined)
     a.smallImageUrl === b.smallImageUrl &&
     a.smallImageText === b.smallImageText &&
     a.startTimestamp === b.startTimestamp &&
-    a.endTimestamp === b.endTimestamp
+    a.endTimestamp === b.endTimestamp &&
+    JSON.stringify(a.buttons) === JSON.stringify(b.buttons)
   );
 }

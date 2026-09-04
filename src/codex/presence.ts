@@ -10,6 +10,7 @@ import {
 } from "../discord/presence-builder.ts";
 
 const MODEL_NAMES: Record<string, string> = {
+  "gpt-6-astra": "GPT-6 Astra",
   "gpt-5.6-sol": "GPT-5.6 Sol",
   "gpt-5.6-terra": "GPT-5.6 Terra",
   "gpt-5.6-luna": "GPT-5.6 Luna",
@@ -24,6 +25,9 @@ const MODEL_NAMES: Record<string, string> = {
 };
 
 const WORD_CASE: Record<string, string> = {
+  astra: "Astra",
+  spark: "Spark",
+  max: "Max",
   mini: "Mini",
   nano: "Nano",
   codex: "Codex",
@@ -35,7 +39,7 @@ const WORD_CASE: Record<string, string> = {
 
 export function codexModelDisplayName(id?: string): string {
   if (!id || id.trim() === "") return "Codex";
-  const key = id.toLowerCase();
+  const key = id.trim().toLowerCase().replace(/-fast$/, "").replace(/-\d{4}-\d{2}-\d{2}$/, "");
   if (MODEL_NAMES[key]) return MODEL_NAMES[key]!;
   if (key.startsWith("gpt-")) {
     const rest = key.slice(4).split("-");
@@ -81,5 +85,6 @@ export function buildCodexActivity(state: PresenceState, assets: ActivityAssets)
     activity.smallImageText = monthlyHover;
   }
   if (state.startTimestamp) activity.startTimestamp = state.startTimestamp;
+  if (assets.buttons?.length) activity.buttons = assets.buttons;
   return activity;
 }
