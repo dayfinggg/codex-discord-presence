@@ -38,7 +38,7 @@ const WORD_CASE: Record<string, string> = {
 };
 
 export function codexModelDisplayName(id?: string): string {
-  if (!id || id.trim() === "") return "Codex";
+  if (!id || id.trim() === "") return "ChatGPT";
   const key = id.trim().toLowerCase().replace(/-fast$/, "").replace(/-\d{4}-\d{2}-\d{2}$/, "");
   if (MODEL_NAMES[key]) return MODEL_NAMES[key]!;
   if (key.startsWith("gpt-")) {

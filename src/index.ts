@@ -48,7 +48,7 @@ log.info(`presence data: ${config.dataDir}`);
 const rpc = new RpcClient(config.applicationId);
 const assets = {
   appName: config.appName,
-  buttons: [{ label: "Get Codex Presence", url: "https://github.com/dayfinggg/codex-discord-presence" }],
+  buttons: [{ label: "Get ChatGPT Presence", url: "https://github.com/dayfinggg/codex-discord-presence" }],
   largeImageKey: config.largeImageKey,
   largeImageKeyLight: config.largeImageKeyLight,
   largeImageKeyDark: config.largeImageKeyDark,

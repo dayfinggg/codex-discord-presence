@@ -22,12 +22,12 @@ export interface Config {
 }
 
 export const DEFAULT_DISCORD_APPLICATION_ID = "1521142415547826177";
-export const DEFAULT_RICH_PRESENCE_ASSET_KEY = "codex-color";
-export const DEFAULT_LARGE_IMAGE_KEY_LIGHT = "codex-liquid-light";
-export const DEFAULT_LARGE_IMAGE_KEY_DARK = "codex-liquid-dark";
-export const DEFAULT_SMALL_IMAGE_KEY = "usage-stats";
-export const DEFAULT_SMALL_IMAGE_KEY_LIGHT = "codex-stats-light";
-export const DEFAULT_SMALL_IMAGE_KEY_DARK = "codex-stats-dark";
+export const DEFAULT_RICH_PRESENCE_ASSET_KEY = "chatgpt-liquid-light";
+export const DEFAULT_LARGE_IMAGE_KEY_LIGHT = "chatgpt-liquid-light";
+export const DEFAULT_LARGE_IMAGE_KEY_DARK = "chatgpt-liquid-dark";
+export const DEFAULT_SMALL_IMAGE_KEY = "chatgpt-stats-light";
+export const DEFAULT_SMALL_IMAGE_KEY_LIGHT = "chatgpt-stats-light";
+export const DEFAULT_SMALL_IMAGE_KEY_DARK = "chatgpt-stats-dark";
 const SSH_ALIAS = /^[a-z0-9](?:[a-z0-9._-]{0,252}[a-z0-9])?$/i;
 
 export interface RuntimePaths {
@@ -152,7 +152,7 @@ export function loadConfig(
 
   return {
     applicationId,
-    appName: appName || "Codex",
+    appName: appName || "ChatGPT",
     largeImageKey,
     largeImageKeyLight,
     largeImageKeyDark,
