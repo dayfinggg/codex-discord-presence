@@ -428,7 +428,8 @@ export class CodexDesktopSelectionWatcher {
         `SELECT id, ${label} AS title, cwd FROM threads WHERE archived = 0 AND ${label} = ? COLLATE NOCASE`,
       ).all(title) as unknown as LocalSessionTitleCandidate[];
       if (exact.length > 0) {
-        return selectLocalSessionByTitle(title, exact, projectRoots);
+        return selectLocalSessionByTitle(title, exact, projectRoots)
+          ?? (exact.length === 1 ? exact[0]!.id.toLowerCase() : undefined);
       }
       const candidates = this.stateDatabase.prepare(
         `SELECT id, ${label} AS title, cwd FROM threads WHERE archived = 0 AND ${label} <> '' ORDER BY recency_at_ms DESC, updated_at_ms DESC LIMIT 500`,
